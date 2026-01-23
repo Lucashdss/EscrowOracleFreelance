@@ -51,7 +51,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         deliveryConfirmed = true;
     }
 
-    function releaseFunds() external OnlyPerformUpkeep {
+    function releaseFunds() internal OnlyPerformUpkeep {
         if (state != EscrowState.DELIVERED) {
             revert Errors.InvalidState();
         }
@@ -67,7 +67,15 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         }
     }
 
-    function DeadlinePassedRefundClient() external view OnlyPerformUpkeep {
+    function FundMoreEther() external payable OnlyClient {
+        if (state != EscrowState.FUNDED) {
+            revert Errors.InvalidState();
+        }
+
+        amountToRelease += msg.value;
+    }
+
+    function DeadlinePassedRefundClient() internal OnlyPerformUpkeep {
         (bool success, ) = payable(client).call{value: amountToRelease}("");
         require(success, "ETH transfer failed");
     }
@@ -86,6 +94,14 @@ contract EscrowFreelance is AutomationCompatibleInterface {
 
     function getFreelancerAdress() external view returns (address) {
         return freelancer;
+    }
+
+    function getScrowState() external view returns (EscrowState) {
+        return state;
+    }
+
+    function getDeliveryConfirmedState() external view returns (bool) {
+        return deliveryConfirmed;
     }
 
     modifier OnlyClient() {
@@ -117,14 +133,29 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         // if deadline has passed and state is FUNDED, we need to perform upkeep to refund
         if (block.timestamp > deadline && state == EscrowState.FUNDED) {
             upkeepNeeded = true;
-            performData = ""; // No additional data needed for performUpkeep
+            performData = abi.encode(uint8(1)); // No additional data needed for performUpkeep
+            return (upkeepNeeded, performData);
+        } else if (state == EscrowState.DELIVERED && deliveryConfirmed) {
+            upkeepNeeded = true;
+            performData = abi.encode(uint8(2)); // No additional data needed for performUpkeep
+            return (upkeepNeeded, performData);
+        } else {
+            upkeepNeeded = false;
+            performData = "";
             return (upkeepNeeded, performData);
         }
     }
 
     function performUpkeep(bytes calldata performData) external override {
-        isPerformingUpkeep = true;
-        releaseFunds();
-        isPerformingUpkeep = false;
+        uint8 action = abi.decode(performData, (uint8));
+        if (action == 1) {
+            isPerformingUpkeep = true;
+            DeadlinePassedRefundClient();
+            isPerformingUpkeep = false;
+        } else if (action == 2) {
+            isPerformingUpkeep = true;
+            releaseFunds();
+            isPerformingUpkeep = false;
+        }
     }
 }
