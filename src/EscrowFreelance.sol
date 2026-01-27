@@ -2,6 +2,7 @@
 pragma solidity ^0.8.19;
 
 import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {Errors} from "./libraries/Errors.sol";
 
 contract EscrowFreelance is AutomationCompatibleInterface {
@@ -23,6 +24,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
     uint256 private amountToRelease;
     address private client;
     address private freelancer;
+    AggregatorV3Interface internal dataFeed;
 
     //constructor to initialize the contract
     constructor(address _freelancer, uint256 _deliveryPeriod) payable {
@@ -77,7 +79,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
 
     function DeadlinePassedRefundClient() internal OnlyPerformUpkeep {
         (bool success, ) = payable(client).call{value: amountToRelease}("");
-        require(success, "ETH transfer failed");
+        if (!success) revert Errors.InsufficientFunds();
     }
 
     function getDeadline() external view returns (uint256) {
@@ -105,20 +107,23 @@ contract EscrowFreelance is AutomationCompatibleInterface {
     }
 
     modifier OnlyClient() {
-        require(msg.sender == client, "Not client");
+        if (msg.sender != client) {
+            revert Errors.OnlyClient();
+        }
         _;
     }
 
     modifier OnlyFreelancer() {
-        require(msg.sender == freelancer, "Not freelancer");
+        if (msg.sender != freelancer) {
+            revert Errors.OnlyFreelancer();
+        }
         _;
     }
 
     modifier OnlyPerformUpkeep() {
-        require(
-            isPerformingUpkeep,
-            "releaseFunds can only be called by performUpkeep"
-        );
+        if (!isPerformingUpkeep) {
+            revert Errors.NotPerformUpkeep();
+        }
         _;
     }
 
