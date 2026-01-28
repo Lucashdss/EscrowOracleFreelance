@@ -25,7 +25,7 @@ contract EscrowFreelanceTest is Test {
         uint256 clientInitialBalance = client.balance;
 
         vm.prank(client);
-        escrow.FundMoreEther{value: sendValue}();
+        escrow.fundEther{value: sendValue}();
 
         uint256 escrowFinalBalance = escrow.getAmountToRelease();
 
@@ -88,7 +88,7 @@ contract EscrowFreelanceTest is Test {
         vm.prank(freelancer);
         vm.deal(freelancer, 5 ether);
         vm.expectRevert();
-        escrow.FundMoreEther{value: sendValue}();
+        escrow.fundEther{value: sendValue}();
     }
 
     function testCheckUpkeepDeadlinePassed() public {
@@ -150,6 +150,24 @@ contract EscrowFreelanceTest is Test {
             performData.length,
             0,
             "PerformData should be empty when no upkeep is needed"
+        );
+    }
+
+    function testGetVersion() public view {
+        uint256 version = escrow.getVersion();
+        assertEq(version, 4, "Price feed version should be 4");
+    }
+
+    function testConvertAmountFromUSDtoETH() public view {
+        uint256 usdAmount = 1000 * 1e18; // $1000 in 18 decimals
+        uint256 expectedEthAmount = (usdAmount * 1e18) / (2000 * 1e18); // $2000 price in ETH
+
+        uint256 ethAmount = escrow.convertAmountFromUSDtoETH(usdAmount);
+
+        assertEq(
+            ethAmount,
+            expectedEthAmount,
+            "ETH amount conversion is incorrect"
         );
     }
 }
