@@ -22,6 +22,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
     bool private isPerformingUpkeep;
     uint256 private deadline;
     uint256 private amountToRelease;
+    uint256 private minimumPriceUSDinEther;
     address private immutable iClient;
     address private immutable iFreelancer;
     address internal immutable iDataFeed;
@@ -81,11 +82,15 @@ contract EscrowFreelance is AutomationCompatibleInterface {
     }
 
     function fundEther() external payable OnlyClient {
-        if (state != EscrowState.FUNDED) {
-            revert Errors.InvalidState();
+        if (state == EscrowState.RELEASED || state == EscrowState.REFUNDED) {
+            revert Errors.ContractHasBeenAlreadyReleasedOrRefunded();
         }
 
         amountToRelease += msg.value;
+
+        if (amountToRelease < minimumPriceUSDinEther) {
+            revert Errors.AmountIsInferiorToMinimumUSD();
+        }
     }
 
     function convertAmountFromUSDtoETH(
@@ -96,6 +101,15 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         uint256 adjustedPrice = uint256(price) * 1e10; // Adjust to 18 decimals
         uint256 ethAmount = (usdAmount * 1e18) / adjustedPrice;
         return ethAmount;
+    }
+
+    function setMininumPriceUSD(uint256 usdAmount) external OnlyFreelancer {
+        uint256 ethAmount = convertAmountFromUSDtoETH(usdAmount);
+        if (state != EscrowState.CREATED) {
+            revert Errors.ContractHasBeenAlreadyFunded();
+        }
+
+        minimumPriceUSDinEther = ethAmount;
     }
 
     function deadlinePassedRefundClient() internal OnlyPerformUpkeep {
@@ -130,6 +144,14 @@ contract EscrowFreelance is AutomationCompatibleInterface {
     function getVersion() public view returns (uint256) {
         AggregatorV3Interface priceFeed = AggregatorV3Interface(iDataFeed);
         return priceFeed.version();
+    }
+
+    function getDataFeedAddress() external view returns (address) {
+        return iDataFeed;
+    }
+
+    function getMinunumPriceUSD() external view returns (uint256) {
+        return minimumPriceUSDinEther;
     }
 
     modifier OnlyClient() {

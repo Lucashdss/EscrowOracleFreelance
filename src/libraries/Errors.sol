@@ -10,4 +10,7 @@ library Errors {
     error TransferFailed();
     error InsufficientFunds();
     error NotPerformUpkeep();
+    error ContractHasBeenAlreadyFunded();
+    error ContractHasBeenAlreadyReleasedOrRefunded();
+    error AmountIsInferiorToMinimumUSD();
 }

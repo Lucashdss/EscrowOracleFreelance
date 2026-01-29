@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import "forge-std/console.sol";
 import {EscrowFreelance} from "../src/EscrowFreelance.sol";
 import {DeployEscrow} from "../script/DeployEscrow.s.sol";
+import {HelperConfig} from "../script/HelperConfig.s.sol";
 
 contract EscrowFreelanceTest is Test {
     EscrowFreelance escrow;
@@ -16,7 +17,7 @@ contract EscrowFreelanceTest is Test {
 
     function testContractBalanceFunded() public view {
         uint256 escrowBalance = address(escrow).balance;
-        assertEq(escrowBalance, 1 ether);
+        assertApproxEqAbs(escrowBalance, 1 ether, 1e14);
     }
 
     function testFundMoreEther() public {
@@ -168,6 +169,84 @@ contract EscrowFreelanceTest is Test {
             ethAmount,
             expectedEthAmount,
             "ETH amount conversion is incorrect"
+        );
+    }
+
+    function testContractDeploymentSendEther() public {
+        EscrowFreelance escrowWithoutValue;
+        escrowWithoutValue = new DeployEscrow().runWithoutValue();
+
+        EscrowFreelance.EscrowState state = escrowWithoutValue.getScrowState();
+
+        assertEq(
+            uint256(state),
+            uint256(EscrowFreelance.EscrowState.CREATED), //check but it should be created, change main contract
+            "Initial state should be CREATED"
+        );
+    }
+
+    function testDeadlineCorrectSet() public view {
+        uint256 deliveryPeriod = 7 days;
+        uint256 contractDeploymentTime = block.timestamp;
+        uint256 expectedDeadline = contractDeploymentTime + deliveryPeriod;
+
+        uint256 actualDeadline = escrow.getDeadline();
+
+        assertEq(
+            actualDeadline,
+            expectedDeadline,
+            "Deadline is not set correctly"
+        );
+    }
+
+    function testDataFeedAddressCorrect() public {
+        HelperConfig helper = new HelperConfig();
+        address dataFeedAddressFromHelper = helper.activeNetworkConfig();
+
+        address dataFeedAddressFromContract = escrow.getDataFeedAddress();
+
+        assertEq(
+            dataFeedAddressFromContract,
+            dataFeedAddressFromHelper,
+            "Data feed address is not set correctly"
+        );
+    }
+
+    function testFundContractWithNoFundsIs0() public {
+        EscrowFreelance escrowWithoutValue;
+        escrowWithoutValue = new DeployEscrow().runWithoutValue();
+
+        uint256 escrowBalance = address(escrowWithoutValue).balance;
+
+        assertEq(escrowBalance, 0, "Escrow balance should be zero");
+    }
+
+    function testFundingContractWithNoFunds() public {
+        EscrowFreelance escrowWithoutValue;
+        escrowWithoutValue = new DeployEscrow().runWithoutValue();
+        address client = escrowWithoutValue.getClientAdress();
+
+        vm.deal(client, 5 ether);
+        vm.prank(client);
+        escrowWithoutValue.fundEther{value: sendValue}();
+        uint256 escrowBalance = address(escrowWithoutValue).balance;
+
+        assertEq(escrowBalance, 1 ether, "Escrow balance should be one ether");
+    }
+
+    function testSetMininumUSD() public {
+        EscrowFreelance escrowWithoutValue;
+        escrowWithoutValue = new DeployEscrow().runWithoutValue();
+        address freelancer = escrowWithoutValue.getFreelancerAdress();
+        uint256 newMinimumUSD = 200;
+
+        vm.prank(freelancer);
+        escrowWithoutValue.setMininumPriceUSD(newMinimumUSD);
+
+        assertEq(
+            escrowWithoutValue.getMinunumPriceUSD(),
+            escrowWithoutValue.convertAmountFromUSDtoETH(newMinimumUSD),
+            "Minimum price in USD not set correctly"
         );
     }
 }

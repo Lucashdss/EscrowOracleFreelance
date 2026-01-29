@@ -21,4 +21,19 @@ contract DeployEscrow is Script {
         vm.stopBroadcast();
         return escrow;
     }
+
+    function runWithoutValue() external returns (EscrowFreelance) {
+        address freelancer = makeAddr("freelancer");
+        uint256 deliveryPeriod = 7 days;
+        HelperConfig helperConfig = new HelperConfig();
+
+        vm.startBroadcast();
+        EscrowFreelance escrow = new EscrowFreelance(
+            freelancer,
+            deliveryPeriod,
+            helperConfig.activeNetworkConfig()
+        );
+        vm.stopBroadcast();
+        return escrow;
+    }
 }
