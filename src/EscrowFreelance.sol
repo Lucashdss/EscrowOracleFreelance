@@ -86,10 +86,16 @@ contract EscrowFreelance is AutomationCompatibleInterface {
             revert Errors.ContractHasBeenAlreadyReleasedOrRefunded();
         }
 
+        if (minimumPriceUSDinEther != 0) {
+            if (msg.value < minimumPriceUSDinEther) {
+                revert Errors.AmountIsInferiorToMinimumUSD();
+            }
+        }
+
         amountToRelease += msg.value;
 
-        if (amountToRelease < minimumPriceUSDinEther) {
-            revert Errors.AmountIsInferiorToMinimumUSD();
+        if (state == EscrowState.CREATED) {
+            state = EscrowState.FUNDED;
         }
     }
 
@@ -103,12 +109,11 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         return ethAmount;
     }
 
-    function setMininumPriceUSD(uint256 usdAmount) external OnlyFreelancer {
-        uint256 ethAmount = convertAmountFromUSDtoETH(usdAmount);
+    function setMinimumPriceUSD(uint256 usdAmount) external OnlyFreelancer {
         if (state != EscrowState.CREATED) {
             revert Errors.ContractHasBeenAlreadyFunded();
         }
-
+        uint256 ethAmount = convertAmountFromUSDtoETH(usdAmount);
         minimumPriceUSDinEther = ethAmount;
     }
 
@@ -150,7 +155,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         return iDataFeed;
     }
 
-    function getMinunumPriceUSD() external view returns (uint256) {
+    function getMinimumPriceUSD() external view returns (uint256) {
         return minimumPriceUSDinEther;
     }
 

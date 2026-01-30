@@ -249,4 +249,26 @@ contract EscrowFreelanceTest is Test {
             "Minimum price in USD not set correctly"
         );
     }
+
+    function testFundLessThanMininumUSD() public {
+        EscrowFreelance escrowWithoutValue;
+        escrowWithoutValue = new DeployEscrow().runWithoutValue();
+        address freelancer = escrowWithoutValue.getFreelancerAdress();
+        address client = escrowWithoutValue.getClientAdress();
+        uint256 newMinimumUSD = 200;
+        uint256 fundAmount = escrowWithoutValue.convertAmountFromUSDtoETH(
+            newMinimumUSD - 50
+        );
+
+        vm.prank(freelancer);
+        escrowWithoutValue.setMinimumPriceUSD(newMinimumUSD);
+        console.log(
+            "Minimum price in ether:",
+            escrowWithoutValue.getMinimumPriceUSD()
+        );
+        vm.deal(client, 5 ether);
+        vm.prank(client);
+        vm.expectRevert();
+        escrowWithoutValue.fundEther{value: fundAmount}();
+    }
 }
