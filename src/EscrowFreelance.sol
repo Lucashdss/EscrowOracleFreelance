@@ -4,9 +4,12 @@ pragma solidity ^0.8.19;
 import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {Errors} from "./libraries/Errors.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-contract EscrowFreelance is AutomationCompatibleInterface {
+abstract contract EscrowFreelance is AutomationCompatibleInterface, IERC20 {
     using Errors for *;
+    using SafeERC20 for IERC20;
 
     enum EscrowState {
         CREATED,
@@ -23,6 +26,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
     uint256 private deadline;
     uint256 private amountToRelease;
     uint256 private minimumPriceUSDinEther;
+    address public immutable iToken; // address(0) = ETH, otherwise ERC20
     address private immutable iClient;
     address private immutable iFreelancer;
     address internal immutable iDataFeed;
@@ -31,12 +35,14 @@ contract EscrowFreelance is AutomationCompatibleInterface {
     constructor(
         address _freelancer,
         uint256 _deliveryPeriod,
-        address _dataFeed
+        address _dataFeed,
+        address _token
     ) payable {
         iClient = msg.sender;
         iFreelancer = _freelancer;
         iDataFeed = _dataFeed;
         amountToRelease = msg.value;
+        iToken = _token;
 
         deadline = block.timestamp + _deliveryPeriod;
 
@@ -81,22 +87,24 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         }
     }
 
-    function fundEther() external payable OnlyClient {
-        if (state == EscrowState.RELEASED || state == EscrowState.REFUNDED) {
-            revert Errors.ContractHasBeenAlreadyReleasedOrRefunded();
-        }
-
-        if (minimumPriceUSDinEther != 0) {
-            if (msg.value < minimumPriceUSDinEther) {
-                revert Errors.AmountIsInferiorToMinimumUSD();
+    function fund(
+        uint256 amount
+    ) external payable OnlyClient beforeFund(amount) {
+        if (iToken == address(0)) {
+            // ETH escrow
+            if (msg.value != amount) {
+                revert Errors.TokenAddressIsNotETH();
             }
+        } else {
+            // ERC20 escrow
+            if (msg.value != 0) {
+                revert Errors.TokenAddressIsNotERC20();
+            }
+
+            IERC20(iToken).safeTransferFrom(msg.sender, address(this), amount);
         }
 
-        amountToRelease += msg.value;
-
-        if (state == EscrowState.CREATED) {
-            state = EscrowState.FUNDED;
-        }
+        amountToRelease += amount;
     }
 
     function convertAmountFromUSDtoETH(
@@ -178,6 +186,24 @@ contract EscrowFreelance is AutomationCompatibleInterface {
             revert Errors.NotPerformUpkeep();
         }
         _;
+    }
+
+    modifier beforeFund(uint256 amount) {
+        if (state == EscrowState.RELEASED || state == EscrowState.REFUNDED) {
+            revert Errors.ContractHasBeenAlreadyReleasedOrRefunded();
+        }
+
+        if (minimumPriceUSDinEther != 0) {
+            if (amount < minimumPriceUSDinEther) {
+                revert Errors.AmountIsInferiorToMinimumUSD();
+            }
+        }
+
+        _;
+
+        if (state == EscrowState.CREATED) {
+            state = EscrowState.FUNDED;
+        }
     }
 
     function checkUpkeep(

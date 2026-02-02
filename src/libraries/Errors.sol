@@ -13,4 +13,6 @@ library Errors {
     error ContractHasBeenAlreadyFunded();
     error ContractHasBeenAlreadyReleasedOrRefunded();
     error AmountIsInferiorToMinimumUSD();
+    error TokenAddressIsNotETH();
+    error TokenAddressIsNotERC20();
 }
