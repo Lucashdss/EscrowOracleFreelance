@@ -7,7 +7,7 @@ import {Errors} from "./libraries/Errors.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-abstract contract EscrowFreelance is AutomationCompatibleInterface, IERC20 {
+contract EscrowFreelance is AutomationCompatibleInterface {
     using Errors for *;
     using SafeERC20 for IERC20;
 
@@ -31,26 +31,19 @@ abstract contract EscrowFreelance is AutomationCompatibleInterface, IERC20 {
     address private immutable iFreelancer;
     address internal immutable iDataFeed;
 
-    //constructor to initialize the contract
     constructor(
         address _freelancer,
         uint256 _deliveryPeriod,
         address _dataFeed,
         address _token
-    ) payable {
+    ) {
         iClient = msg.sender;
         iFreelancer = _freelancer;
         iDataFeed = _dataFeed;
-        amountToRelease = msg.value;
-        iToken = _token;
+        iToken = _token; // address(0) = ETH
 
         deadline = block.timestamp + _deliveryPeriod;
-
-        if (msg.value == 0) {
-            state = EscrowState.CREATED;
-        } else {
-            state = EscrowState.FUNDED;
-        }
+        state = EscrowState.CREATED;
     }
 
     function markDelivered() external OnlyFreelancer {
@@ -113,7 +106,10 @@ abstract contract EscrowFreelance is AutomationCompatibleInterface, IERC20 {
         AggregatorV3Interface priceFeed = AggregatorV3Interface(iDataFeed);
         (, int256 price, , , ) = priceFeed.latestRoundData();
         uint256 adjustedPrice = uint256(price) * 1e10; // Adjust to 18 decimals
-        uint256 ethAmount = (usdAmount * 1e18) / adjustedPrice;
+
+        // ceil instead of floor to avoid rounding below minimum
+        uint256 ethAmount = (usdAmount * 1e18 + adjustedPrice - 1) /
+            adjustedPrice;
         return ethAmount;
     }
 
