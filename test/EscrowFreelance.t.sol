@@ -9,10 +9,12 @@ import {HelperConfig} from "../script/HelperConfig.s.sol";
 
 contract EscrowFreelanceTest is Test {
     EscrowFreelance escrow;
+    EscrowFreelance escrowWithToken;
     uint256 sendValue = 1 ether;
 
     function setUp() public {
-        escrow = new DeployEscrow().run();
+        escrow = new DeployEscrow().runWithETH();
+        escrowWithToken = new DeployEscrow().runWithTokenAddressAnvil();
     }
 
     function testContractBalanceFunded() public {
@@ -187,7 +189,7 @@ contract EscrowFreelanceTest is Test {
         assertEq(action, 2, "PerformData should be empty for this upkeep");
     }
 
-    function testCheckUpkeepNoUpkeepNeeded() public {
+    function testCheckUpkeepNoUpkeepNeeded() public view {
         // Ensure the contract is in a state where no upkeep is needed
         EscrowFreelance.EscrowState state = escrow.getScrowState();
         assertEq(
@@ -229,7 +231,7 @@ contract EscrowFreelanceTest is Test {
         );
     }
 
-    function testContractDeploymentSendEther() public {
+    function testContractDeploymentSendEther() public view {
         EscrowFreelance.EscrowState state = escrow.getScrowState();
 
         assertEq(
@@ -266,7 +268,7 @@ contract EscrowFreelanceTest is Test {
         );
     }
 
-    function testFundContractWithNoFundsIs0() public {
+    function testFundContractWithNoFundsIs0() public view {
         uint256 escrowBalance = address(escrow).balance;
 
         assertEq(escrowBalance, 0, "Escrow balance should be zero");
