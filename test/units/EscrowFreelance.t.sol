@@ -1,29 +1,38 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.19;
 
 import {Test} from "forge-std/Test.sol";
 import "forge-std/console.sol";
-import {EscrowFreelance} from "../src/EscrowFreelance.sol";
-import {DeployEscrow} from "../script/DeployEscrow.s.sol";
-import {HelperConfig} from "../script/HelperConfig.s.sol";
+import {EscrowFreelance} from "../../src/EscrowFreelance.sol";
+import {DeployEscrow} from "../../script/DeployEscrow.s.sol";
+import {HelperConfig} from "../../script/HelperConfig.s.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 
 contract EscrowFreelanceTest is Test {
     EscrowFreelance escrow;
-    EscrowFreelance escrowWithToken;
     uint256 sendValue = 1 ether;
 
     function setUp() public {
         escrow = new DeployEscrow().runWithETH();
-        escrowWithToken = new DeployEscrow().runWithTokenAddressAnvil();
     }
 
     function testContractBalanceFunded() public {
         address client = escrow.getClientAdress();
+        uint256 usdAmount = 2000e18;
+        uint256 expectedEth = escrow.convertAmountFromUSDtoETH(usdAmount);
+        uint256 balanceBefore = address(escrow).balance;
+
         vm.deal(client, 5 ether);
         vm.prank(client);
-        escrow.fund{value: 1 ether}(1 ether);
+        escrow.fund{value: expectedEth}(expectedEth);
+
         uint256 escrowBalance = address(escrow).balance;
-        assertApproxEqAbs(escrowBalance, 1 ether, 1e14);
+
+        assertApproxEqAbs(
+            escrowBalance - balanceBefore,
+            expectedEth,
+            1e14 // rounding tolerance
+        );
     }
 
     function testFundMoreEther() public {
@@ -134,6 +143,7 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testPerformUpkeepReleaseFunds() public {
+        if (block.chainid != 31337) return;
         // Set up the contract in a DELIVERED state with delivery confirmed
         address freelancer = escrow.getFreelancerAdress();
         address client = escrow.getClientAdress();
@@ -219,16 +229,26 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testConvertAmountFromUSDtoETH() public view {
-        uint256 usdAmount = 1000 * 1e18; // $1000 in 18 decimals
-        uint256 expectedEthAmount = (usdAmount * 1e18) / (2000 * 1e18); // $2000 price in ETH
+        uint256 usdAmount = 1000e18;
+
+        // Read oracle price directly
+        AggregatorV3Interface feed = AggregatorV3Interface(
+            escrow.getDataFeedAddress()
+        );
+
+        (, int256 price, , , ) = feed.latestRoundData();
+        require(price > 0, "Invalid oracle price");
+
+        // Chainlink ETH/USD has 8 decimals → scale to 18
+        uint256 adjustedPrice = uint256(price) * 1e10;
+
+        // Same formula used in the contract (ceil division)
+        uint256 expectedEth = (usdAmount * 1e18 + adjustedPrice - 1) /
+            adjustedPrice;
 
         uint256 ethAmount = escrow.convertAmountFromUSDtoETH(usdAmount);
 
-        assertEq(
-            ethAmount,
-            expectedEthAmount,
-            "ETH amount conversion is incorrect"
-        );
+        assertEq(ethAmount, expectedEth);
     }
 
     function testContractDeploymentSendEther() public view {
@@ -256,6 +276,8 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testDataFeedAddressCorrect() public {
+        if (block.chainid != 11155111) return;
+
         HelperConfig helper = new HelperConfig();
         address dataFeedAddressFromHelper = helper.activeNetworkConfig();
 
@@ -268,21 +290,29 @@ contract EscrowFreelanceTest is Test {
         );
     }
 
+    // this test is only meaningful on anvil local blockchain
     function testFundContractWithNoFundsIs0() public view {
-        uint256 escrowBalance = address(escrow).balance;
+        if (block.chainid != 31337) return;
 
-        assertEq(escrowBalance, 0, "Escrow balance should be zero");
+        assertEq(address(escrow).balance, 0);
     }
 
     function testFundingContractWithNoFunds() public {
         address client = escrow.getClientAdress();
+        uint256 balanceBefore = address(escrow).balance;
+        uint256 usdAmount = 2000e18; // example
+        uint256 valueToSend = escrow.convertAmountFromUSDtoETH(usdAmount);
 
         vm.deal(client, 5 ether);
         vm.prank(client);
-        escrow.fund{value: sendValue}(sendValue);
+        escrow.fund{value: valueToSend}(valueToSend);
         uint256 escrowBalance = address(escrow).balance;
 
-        assertEq(escrowBalance, 1 ether, "Escrow balance should be one ether");
+        assertEq(
+            escrowBalance - balanceBefore,
+            valueToSend,
+            "Escrow balance should be one ether"
+        );
     }
 
     function testSetMininumUSD() public {

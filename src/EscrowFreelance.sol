@@ -72,12 +72,27 @@ contract EscrowFreelance is AutomationCompatibleInterface {
 
         state = EscrowState.RELEASED;
 
-        (bool success, ) = payable(iFreelancer).call{value: amountToRelease}(
-            ""
-        );
-        if (!success) {
-            revert Errors.TransferFailed();
+        if (iToken == address(0)) {
+            // ETH transfer
+            (bool success, ) = payable(iFreelancer).call{
+                value: amountToRelease
+            }("");
+            if (!success) {
+                revert Errors.TransferFailed();
+            }
+        } else {
+            // ERC20 transfer
+            IERC20 token = IERC20(iToken);
+            uint256 balance = token.balanceOf(address(this));
+
+            if (balance < amountToRelease) {
+                revert Errors.InsufficientFunds();
+            }
+
+            token.safeTransfer(iFreelancer, amountToRelease);
         }
+
+        amountToRelease = 0;
     }
 
     function fund(
@@ -86,12 +101,12 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         if (iToken == address(0)) {
             // ETH escrow
             if (msg.value != amount) {
-                revert Errors.TokenAddressIsNotETH();
+                revert Errors.TokenAddressIsNotERC20();
             }
         } else {
             // ERC20 escrow
             if (msg.value != 0) {
-                revert Errors.TokenAddressIsNotERC20();
+                revert Errors.TokenAddressIsNotETH();
             }
 
             IERC20(iToken).safeTransferFrom(msg.sender, address(this), amount);
@@ -122,8 +137,29 @@ contract EscrowFreelance is AutomationCompatibleInterface {
     }
 
     function deadlinePassedRefundClient() internal OnlyPerformUpkeep {
-        (bool success, ) = payable(iClient).call{value: amountToRelease}("");
-        if (!success) revert Errors.InsufficientFunds();
+        state = EscrowState.REFUNDED;
+
+        if (iToken == address(0)) {
+            // ETH transfer
+            (bool success, ) = payable(iClient).call{value: amountToRelease}(
+                ""
+            );
+            if (!success) {
+                revert Errors.TransferFailed();
+            }
+        } else {
+            // ERC20 transfer
+            IERC20 token = IERC20(iToken);
+            uint256 balance = token.balanceOf(address(this));
+
+            if (balance < amountToRelease) {
+                revert Errors.InsufficientFunds();
+            }
+
+            token.safeTransfer(iClient, amountToRelease);
+        }
+
+        amountToRelease = 0;
     }
 
     function getDeadline() external view returns (uint256) {
@@ -161,6 +197,10 @@ contract EscrowFreelance is AutomationCompatibleInterface {
 
     function getMinimumPriceUSD() external view returns (uint256) {
         return minimumPriceUSDinEther;
+    }
+
+    function getTokenAddress() external view returns (address) {
+        return iToken;
     }
 
     modifier OnlyClient() {
