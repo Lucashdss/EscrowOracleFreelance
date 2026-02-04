@@ -23,9 +23,9 @@ contract EscrowFreelance is AutomationCompatibleInterface {
     EscrowState private state;
     bool private deliveryConfirmed;
     bool private isPerformingUpkeep;
-    uint256 private deadline;
     uint256 private amountToRelease;
     uint256 private minimumPriceUSDinEther;
+    uint256 private immutable deadline;
     address public immutable iToken; // address(0) = ETH, otherwise ERC20
     address private immutable iClient;
     address private immutable iFreelancer;
@@ -33,7 +33,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
 
     constructor(
         address _freelancer,
-        uint256 _deliveryPeriod,
+        uint32 _deliveryPeriod,
         address _dataFeed,
         address _token
     ) {
@@ -42,7 +42,9 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         iDataFeed = _dataFeed;
         iToken = _token; // address(0) = ETH
 
-        deadline = block.timestamp + _deliveryPeriod;
+        unchecked {
+            deadline = block.timestamp + _deliveryPeriod;
+        }
         state = EscrowState.CREATED;
     }
 
@@ -138,12 +140,13 @@ contract EscrowFreelance is AutomationCompatibleInterface {
 
     function deadlinePassedRefundClient() internal OnlyPerformUpkeep {
         state = EscrowState.REFUNDED;
+        uint256 amount = amountToRelease;
+
+        amountToRelease = 0;
 
         if (iToken == address(0)) {
             // ETH transfer
-            (bool success, ) = payable(iClient).call{value: amountToRelease}(
-                ""
-            );
+            (bool success, ) = payable(iClient).call{value: amount}("");
             if (!success) {
                 revert Errors.TransferFailed();
             }
@@ -152,14 +155,12 @@ contract EscrowFreelance is AutomationCompatibleInterface {
             IERC20 token = IERC20(iToken);
             uint256 balance = token.balanceOf(address(this));
 
-            if (balance < amountToRelease) {
+            if (balance < amount) {
                 revert Errors.InsufficientFunds();
             }
 
-            token.safeTransfer(iClient, amountToRelease);
+            token.safeTransfer(iClient, amount);
         }
-
-        amountToRelease = 0;
     }
 
     function getDeadline() external view returns (uint256) {
@@ -170,15 +171,15 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         return amountToRelease;
     }
 
-    function getClientAdress() external view returns (address) {
+    function getClientAddress() external view returns (address) {
         return iClient;
     }
 
-    function getFreelancerAdress() external view returns (address) {
+    function getFreelancerAddress() external view returns (address) {
         return iFreelancer;
     }
 
-    function getScrowState() external view returns (EscrowState) {
+    function getEscrowState() external view returns (EscrowState) {
         return state;
     }
 
@@ -254,16 +255,15 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         if (block.timestamp > deadline && state == EscrowState.FUNDED) {
             upkeepNeeded = true;
             performData = abi.encode(uint8(1)); // No additional data needed for performUpkeep
-            return (upkeepNeeded, performData);
         } else if (state == EscrowState.DELIVERED && deliveryConfirmed) {
             upkeepNeeded = true;
             performData = abi.encode(uint8(2)); // No additional data needed for performUpkeep
-            return (upkeepNeeded, performData);
         } else {
             upkeepNeeded = false;
             performData = "";
-            return (upkeepNeeded, performData);
         }
+
+        return (upkeepNeeded, performData);
     }
 
     function performUpkeep(bytes calldata performData) external override {

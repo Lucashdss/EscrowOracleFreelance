@@ -22,7 +22,7 @@ contract EscrowFreelanceTest is Test {
         token = MockERC20(escrowWithToken.getTokenAddress());
 
         // Mint tokens to client for testing
-        address client = escrowWithToken.getClientAdress();
+        address client = escrowWithToken.getClientAddress();
         token.mint(client, 1_000_000e18);
     }
 
@@ -31,7 +31,7 @@ contract EscrowFreelanceTest is Test {
     // ---------------------------
 
     function testERC20FundingSuccess() public {
-        address client = escrowWithToken.getClientAdress();
+        address client = escrowWithToken.getClientAddress();
         uint256 amount = 1000e18;
 
         vm.prank(client);
@@ -46,7 +46,7 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testERC20FundingWithoutApproveReverts() public {
-        address client = escrowWithToken.getClientAdress();
+        address client = escrowWithToken.getClientAddress();
         uint256 amount = 1000e18;
 
         vm.prank(client);
@@ -56,12 +56,12 @@ contract EscrowFreelanceTest is Test {
 
     function testERC20FundingBelowMinimumReverts() public {
         uint256 usdAmount = 2000e18;
-        address freelancer = escrowWithToken.getFreelancerAdress();
+        address freelancer = escrowWithToken.getFreelancerAddress();
 
         vm.prank(freelancer);
         escrowWithToken.setMinimumPriceUSD(usdAmount);
 
-        address client = escrowWithToken.getClientAdress();
+        address client = escrowWithToken.getClientAddress();
         uint256 amountTooLow = escrowWithToken.convertAmountFromUSDtoETH(
             usdAmount
         ) - 1;
@@ -79,8 +79,8 @@ contract EscrowFreelanceTest is Test {
     // ---------------------------
 
     function testERC20PerformUpkeepReleaseFunds() public {
-        address client = escrowWithToken.getClientAdress();
-        address freelancer = escrowWithToken.getFreelancerAdress();
+        address client = escrowWithToken.getClientAddress();
+        address freelancer = escrowWithToken.getFreelancerAddress();
         uint256 amount = 1000e18;
 
         vm.prank(client);
@@ -109,8 +109,8 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testERC20ReleaseWithoutConfirmationReverts() public {
-        address client = escrowWithToken.getClientAdress();
-        address freelancer = escrowWithToken.getFreelancerAdress();
+        address client = escrowWithToken.getClientAddress();
+        address freelancer = escrowWithToken.getFreelancerAddress();
         uint256 amount = 1000e18;
 
         vm.prank(client);
@@ -134,7 +134,7 @@ contract EscrowFreelanceTest is Test {
     // ---------------------------
 
     function testERC20RefundClientAfterDeadline() public {
-        address client = escrowWithToken.getClientAdress();
+        address client = escrowWithToken.getClientAddress();
         uint256 amount = 1000e18;
 
         vm.prank(client);
@@ -164,7 +164,7 @@ contract EscrowFreelanceTest is Test {
     // ---------------------------
 
     function testERC20FundingETHReverts() public {
-        address client = escrowWithToken.getClientAdress();
+        address client = escrowWithToken.getClientAddress();
         uint256 amount = 1 ether;
 
         vm.prank(client);
@@ -173,7 +173,7 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testERC20DoubleFundingAfterReleasedReverts() public {
-        address client = escrowWithToken.getClientAdress();
+        address client = escrowWithToken.getClientAddress();
         uint256 amount = 1000e18;
 
         vm.prank(client);
@@ -183,7 +183,7 @@ contract EscrowFreelanceTest is Test {
         escrowWithToken.fund(amount);
 
         // mark delivered and confirm delivery to release
-        vm.prank(escrowWithToken.getFreelancerAdress());
+        vm.prank(escrowWithToken.getFreelancerAddress());
         escrowWithToken.markDelivered();
 
         vm.prank(client);

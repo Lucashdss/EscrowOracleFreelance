@@ -17,7 +17,7 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testContractBalanceFunded() public {
-        address client = escrow.getClientAdress();
+        address client = escrow.getClientAddress();
         uint256 usdAmount = 2000e18;
         uint256 expectedEth = escrow.convertAmountFromUSDtoETH(usdAmount);
         uint256 balanceBefore = address(escrow).balance;
@@ -36,7 +36,7 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testFundMoreEther() public {
-        address client = escrow.getClientAdress();
+        address client = escrow.getClientAddress();
         uint256 escrowInitialBalance = escrow.getAmountToRelease();
         uint256 clientInitialBalance = client.balance;
 
@@ -59,8 +59,8 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testClientMarkDeliverConfirmed() public {
-        address freelancer = escrow.getFreelancerAdress();
-        address client = escrow.getClientAdress();
+        address freelancer = escrow.getFreelancerAddress();
+        address client = escrow.getClientAddress();
 
         console.log(client);
 
@@ -81,8 +81,8 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testFreelancertMarkDelivered() public {
-        address freelancer = escrow.getFreelancerAdress();
-        address client = escrow.getClientAdress();
+        address freelancer = escrow.getFreelancerAddress();
+        address client = escrow.getClientAddress();
 
         vm.deal(client, 5 ether);
         vm.prank(client);
@@ -90,7 +90,7 @@ contract EscrowFreelanceTest is Test {
         vm.prank(freelancer);
         escrow.markDelivered();
 
-        EscrowFreelance.EscrowState state = escrow.getScrowState();
+        EscrowFreelance.EscrowState state = escrow.getEscrowState();
 
         assertEq(
             uint256(state),
@@ -100,8 +100,8 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testFreelancerTryMarkAsDeliverConfirmed() public {
-        address freelancer = escrow.getFreelancerAdress();
-        address client = escrow.getClientAdress();
+        address freelancer = escrow.getFreelancerAddress();
+        address client = escrow.getClientAddress();
 
         vm.deal(client, 5 ether);
         vm.prank(client);
@@ -115,7 +115,7 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testFreelanceFundMoreEther() public {
-        address freelancer = escrow.getFreelancerAdress();
+        address freelancer = escrow.getFreelancerAddress();
         vm.prank(freelancer);
         vm.deal(freelancer, 5 ether);
         vm.expectRevert();
@@ -127,7 +127,7 @@ contract EscrowFreelanceTest is Test {
         vm.warp(block.timestamp + 8 days);
 
         // Ensure the contract is in the FUNDED state
-        vm.prank(escrow.getClientAdress());
+        vm.prank(escrow.getClientAddress());
         escrow.fund{value: 1 ether}(1 ether);
 
         // Call checkUpkeep and verify the result
@@ -145,8 +145,8 @@ contract EscrowFreelanceTest is Test {
     function testPerformUpkeepReleaseFunds() public {
         if (block.chainid != 31337) return;
         // Set up the contract in a DELIVERED state with delivery confirmed
-        address freelancer = escrow.getFreelancerAdress();
-        address client = escrow.getClientAdress();
+        address freelancer = escrow.getFreelancerAddress();
+        address client = escrow.getClientAddress();
 
         vm.deal(client, 5 ether);
         vm.prank(client);
@@ -177,8 +177,8 @@ contract EscrowFreelanceTest is Test {
 
     function testCheckUpkeepDeliveryConfirmed() public {
         // Set up the contract in a DELIVERED state with delivery confirmed
-        address freelancer = escrow.getFreelancerAdress();
-        address client = escrow.getClientAdress();
+        address freelancer = escrow.getFreelancerAddress();
+        address client = escrow.getClientAddress();
 
         vm.prank(client);
         escrow.fund{value: 1 ether}(1 ether);
@@ -201,7 +201,7 @@ contract EscrowFreelanceTest is Test {
 
     function testCheckUpkeepNoUpkeepNeeded() public view {
         // Ensure the contract is in a state where no upkeep is needed
-        EscrowFreelance.EscrowState state = escrow.getScrowState();
+        EscrowFreelance.EscrowState state = escrow.getEscrowState();
         assertEq(
             uint256(state),
             uint256(EscrowFreelance.EscrowState.CREATED), //check but it should be created, change main contract
@@ -252,7 +252,7 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testContractDeploymentSendEther() public view {
-        EscrowFreelance.EscrowState state = escrow.getScrowState();
+        EscrowFreelance.EscrowState state = escrow.getEscrowState();
 
         assertEq(
             uint256(state),
@@ -298,7 +298,7 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testFundingContractWithNoFunds() public {
-        address client = escrow.getClientAdress();
+        address client = escrow.getClientAddress();
         uint256 balanceBefore = address(escrow).balance;
         uint256 usdAmount = 2000e18; // example
         uint256 valueToSend = escrow.convertAmountFromUSDtoETH(usdAmount);
@@ -316,7 +316,7 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testSetMininumUSD() public {
-        address freelancer = escrow.getFreelancerAdress();
+        address freelancer = escrow.getFreelancerAddress();
         uint256 newMinimumUSD = 200;
 
         vm.prank(freelancer);
@@ -330,8 +330,8 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testFundLessThanMininumUSD() public {
-        address freelancer = escrow.getFreelancerAdress();
-        address client = escrow.getClientAdress();
+        address freelancer = escrow.getFreelancerAddress();
+        address client = escrow.getClientAddress();
         uint256 newMinimumUSD = 200;
         uint256 fundAmount = escrow.convertAmountFromUSDtoETH(newMinimumUSD) -
             1;
