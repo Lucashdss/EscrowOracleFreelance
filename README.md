@@ -1,66 +1,70 @@
-## Foundry
+# EscrowFreelance Contract
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+## Overview
+The **EscrowFreelance** smart contract is designed to facilitate secure and automated payments between clients and freelancers. It ensures that funds are held in escrow until the agreed-upon work is delivered and confirmed. The contract supports both **ETH** and **ERC20 tokens** for payments and integrates with **Chainlink Automation** to handle automated refunds and fund releases.
 
-Foundry consists of:
+A **frontend** is currently in progress to provide an intuitive interface for interacting with the contract.
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+---
 
-## Documentation
+## Features
+- **Escrow States**: Tracks the contract's state (`CREATED`, `FUNDED`, `DELIVERED`, `RELEASED`, `REFUNDED`).
+- **Secure Payments**: Funds are held in escrow until delivery is confirmed.
+- **Automated Upkeep**: Uses Chainlink Automation to:
+  - Refund the client if the deadline passes without delivery.
+  - Release funds to the freelancer upon delivery confirmation.
+- **Flexible Payments**: Supports both ETH and ERC20 tokens.
+- **Price Conversion**: Converts USD amounts to ETH using Chainlink Price Feeds.
+- **Customizable Minimum Price**: Freelancers can set a minimum price for their services.
 
-https://book.getfoundry.sh/
+---
 
-## Usage
+## How It Works
+1. **Contract Deployment**:
+   - The client deploys the contract, specifying the freelancer, delivery period, and payment token (ETH or ERC20).
 
-### Build
+2. **Funding**:
+   - The client funds the contract with the agreed amount.
 
-```shell
-$ forge build
-```
+3. **Delivery**:
+   - The freelancer marks the work as delivered.
+   - The client confirms the delivery.
 
-### Test
+4. **Fund Release**:
+   - Upon delivery confirmation, the funds are released to the freelancer.
 
-```shell
-$ forge test
-```
+5. **Refund**:
+   - If the deadline passes without delivery, the funds are automatically refunded to the client.
 
-### Format
+---
 
-```shell
-$ forge fmt
-```
+## How to Use
+### 1. Deployment
+Deploy the contract by specifying:
+- Freelancer's address.
+- Delivery period (in seconds).
+- Chainlink Price Feed address.
+- Token address (use `address(0)` for ETH).
 
-### Gas Snapshots
+### 2. Funding
+The client funds the contract using the `fund` function:
+- For ETH: Send the amount in `msg.value`.
+- For ERC20: Approve the contract to spend the token, then call `fund`.
 
-```shell
-$ forge snapshot
-```
+### 3. Delivery and Confirmation
+- The freelancer calls `markDelivered` to indicate the work is complete.
+- The client calls `confirmDelivery` to confirm the work.
 
-### Anvil
+### 4. Automated Upkeep
+- Chainlink Automation will monitor the contract and:
+  - Refund the client if the deadline passes.
+  - Release funds to the freelancer upon delivery confirmation.
 
-```shell
-$ anvil
-```
+---
 
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+## Frontend
+A **frontend** is currently being developed to simplify interactions with the contract. It will allow users to:
+- Fund the contract.
+- Mark work as delivered.
+- Confirm delivery.
+- View the contract's state and details.
