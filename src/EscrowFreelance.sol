@@ -11,6 +11,12 @@ contract EscrowFreelance is AutomationCompatibleInterface {
     using Errors for *;
     using SafeERC20 for IERC20;
 
+    event StateChanged(EscrowState newState);
+    event FundsReleased(address freelancer, uint256 amount);
+    event FundsRefunded(address client, uint256 amount);
+    event DeliveryConfirmed(address client);
+    event MinimumPriceUpdated(uint256 newMinimumPrice);
+
     enum EscrowState {
         CREATED,
         FUNDED,
@@ -33,7 +39,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
 
     constructor(
         address _freelancer,
-        uint32 _deliveryPeriod,
+        uint256 _deliveryPeriod,
         address _dataFeed,
         address _token
     ) {
@@ -54,6 +60,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         }
 
         state = EscrowState.DELIVERED;
+        emit StateChanged(EscrowState.DELIVERED);
     }
 
     function confirmDelivery() external OnlyClient {
@@ -62,6 +69,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         }
 
         deliveryConfirmed = true;
+        emit DeliveryConfirmed(msg.sender);
     }
 
     function releaseFunds() internal OnlyPerformUpkeep {
@@ -73,6 +81,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         }
 
         state = EscrowState.RELEASED;
+        emit StateChanged(EscrowState.RELEASED);
 
         if (iToken == address(0)) {
             // ETH transfer
@@ -94,6 +103,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
             token.safeTransfer(iFreelancer, amountToRelease);
         }
 
+        emit FundsReleased(iFreelancer, amountToRelease);
         amountToRelease = 0;
     }
 
@@ -136,12 +146,15 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         }
         uint256 ethAmount = convertAmountFromUSDtoETH(usdAmount);
         minimumPriceUSDinEther = ethAmount;
+
+        emit MinimumPriceUpdated(usdAmount);
     }
 
     function deadlinePassedRefundClient() internal OnlyPerformUpkeep {
         state = EscrowState.REFUNDED;
-        uint256 amount = amountToRelease;
+        emit StateChanged(EscrowState.REFUNDED);
 
+        uint256 amount = amountToRelease;
         amountToRelease = 0;
 
         if (iToken == address(0)) {
@@ -161,6 +174,8 @@ contract EscrowFreelance is AutomationCompatibleInterface {
 
             token.safeTransfer(iClient, amount);
         }
+
+        emit FundsRefunded(iClient, amount);
     }
 
     function getDeadline() external view returns (uint256) {
