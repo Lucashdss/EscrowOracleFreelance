@@ -90,7 +90,7 @@ contract EscrowFreelanceTest is Test {
         escrowWithToken.fund(amount);
 
         vm.prank(freelancer);
-        escrowWithToken.markDelivered();
+        escrowWithToken.markWorkSubmitted();
 
         vm.prank(client);
         escrowWithToken.confirmDelivery();
@@ -120,7 +120,7 @@ contract EscrowFreelanceTest is Test {
         escrowWithToken.fund(amount);
 
         vm.prank(freelancer);
-        escrowWithToken.markDelivered();
+        escrowWithToken.markWorkSubmitted();
 
         //do not confirm delivery
 
@@ -184,7 +184,7 @@ contract EscrowFreelanceTest is Test {
 
         // mark delivered and confirm delivery to release
         vm.prank(escrowWithToken.getFreelancerAddress());
-        escrowWithToken.markDelivered();
+        escrowWithToken.markWorkSubmitted();
 
         vm.prank(client);
         escrowWithToken.confirmDelivery();

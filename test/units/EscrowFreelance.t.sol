@@ -68,7 +68,7 @@ contract EscrowFreelanceTest is Test {
         vm.prank(client);
         escrow.fund{value: sendValue}(sendValue);
         vm.prank(freelancer);
-        escrow.markDelivered();
+        escrow.markWorkSubmitted();
         vm.prank(client);
         escrow.confirmDelivery();
         bool deliveryConfirmed = escrow.getDeliveryConfirmedState();
@@ -80,7 +80,7 @@ contract EscrowFreelanceTest is Test {
         );
     }
 
-    function testFreelancertMarkDelivered() public {
+    function testFreelancertmarkWorkSubmitted() public {
         address freelancer = escrow.getFreelancerAddress();
         address client = escrow.getClientAddress();
 
@@ -88,14 +88,14 @@ contract EscrowFreelanceTest is Test {
         vm.prank(client);
         escrow.fund{value: sendValue}(sendValue);
         vm.prank(freelancer);
-        escrow.markDelivered();
+        escrow.markWorkSubmitted();
 
         EscrowFreelance.EscrowState state = escrow.getEscrowState();
 
         assertEq(
             uint256(state),
-            uint256(EscrowFreelance.EscrowState.DELIVERED),
-            "Escrow state did not update to DELIVERED"
+            uint256(EscrowFreelance.EscrowState.WORK_SUBMITTED),
+            "Escrow state did not update to WORK_SUBMITTED"
         );
     }
 
@@ -107,7 +107,7 @@ contract EscrowFreelanceTest is Test {
         vm.prank(client);
         escrow.fund{value: sendValue}(sendValue);
         vm.prank(freelancer);
-        escrow.markDelivered();
+        escrow.markWorkSubmitted();
 
         vm.prank(freelancer);
         vm.expectRevert();
@@ -153,7 +153,7 @@ contract EscrowFreelanceTest is Test {
         escrow.fund{value: sendValue}(sendValue);
 
         vm.prank(freelancer);
-        escrow.markDelivered();
+        escrow.markWorkSubmitted();
 
         vm.prank(client);
         escrow.confirmDelivery();
@@ -183,7 +183,7 @@ contract EscrowFreelanceTest is Test {
         vm.prank(client);
         escrow.fund{value: 1 ether}(1 ether);
         vm.prank(freelancer);
-        escrow.markDelivered();
+        escrow.markWorkSubmitted();
         vm.prank(client);
         escrow.confirmDelivery();
 

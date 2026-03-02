@@ -9,6 +9,7 @@ import {MockERC20} from "../test/mocks/MockERC20.sol";
 contract DeployEscrow is Script {
     function runWithETH() external returns (EscrowFreelance) {
         address freelancer = makeAddr("freelancer");
+        address admin = makeAddr("admin");
         uint256 deliveryPeriod = 7 days;
         HelperConfig helperConfig = new HelperConfig();
 
@@ -17,7 +18,29 @@ contract DeployEscrow is Script {
             freelancer,
             deliveryPeriod,
             helperConfig.activeNetworkConfig(),
-            address(0) // ETH
+            address(0), // ETH
+            admin,
+            0
+        );
+        vm.stopBroadcast();
+        return escrow;
+    }
+
+    function runWithETHandBPS() external returns (EscrowFreelance) {
+        address freelancer = makeAddr("freelancer");
+        address admin = makeAddr("admin");
+        uint256 deliveryPeriod = 7 days;
+        uint256 bps = 1000; // 10%
+        HelperConfig helperConfig = new HelperConfig();
+
+        vm.startBroadcast();
+        EscrowFreelance escrow = new EscrowFreelance(
+            freelancer,
+            deliveryPeriod,
+            helperConfig.activeNetworkConfig(),
+            address(0), // ETH
+            admin,
+            bps
         );
         vm.stopBroadcast();
         return escrow;
@@ -25,6 +48,7 @@ contract DeployEscrow is Script {
 
     function runWithTokenAddressAnvil() external returns (EscrowFreelance) {
         address freelancer = makeAddr("freelancer");
+        address admin = msg.sender;
         uint256 deliveryPeriod = 7 days;
         HelperConfig helperConfig = new HelperConfig();
 
@@ -36,25 +60,11 @@ contract DeployEscrow is Script {
             freelancer,
             deliveryPeriod,
             helperConfig.activeNetworkConfig(),
-            address(token) // Use ERC20 instead of ETH
+            address(token), // Use ERC20 instead of ETH
+            admin,
+            0
         );
         vm.stopBroadcast();
         return escrow;
     }
-
-    // function runWithoutValue() external returns (EscrowFreelance) {
-    //     address freelancer = makeAddr("freelancer");
-    //     uint256 deliveryPeriod = 7 days;
-    //     HelperConfig helperConfig = new HelperConfig();
-
-    //     vm.startBroadcast();
-    //     EscrowFreelance escrow = new EscrowFreelance(
-    //         freelancer,
-    //         deliveryPeriod,
-    //         helperConfig.activeNetworkConfig(),
-    //         address(0) // ETH
-    //     );
-    //     vm.stopBroadcast();
-    //     return escrow;
-    // }
 }

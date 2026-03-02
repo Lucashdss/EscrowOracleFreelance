@@ -10,20 +10,25 @@ contract EscrowFreelanceFactory {
         address indexed freelancer,
         address token,
         uint256 deliveryPeriod,
-        address dataFeed
+        address dataFeed,
+        uint256 bps
     );
 
     function createEscrow(
         address freelancer,
         uint256 deliveryPeriod,
         address dataFeed,
-        address token
+        address token,
+        address admin,
+        uint256 bps
     ) external returns (address escrow) {
         EscrowFreelance instance = new EscrowFreelance(
             freelancer,
             deliveryPeriod,
             dataFeed,
-            token
+            token,
+            admin,
+            bps
         );
         escrow = address(instance);
         emit EscrowCreated(
@@ -32,7 +37,8 @@ contract EscrowFreelanceFactory {
             freelancer,
             token,
             deliveryPeriod,
-            dataFeed
+            dataFeed,
+            bps
         );
     }
 }
