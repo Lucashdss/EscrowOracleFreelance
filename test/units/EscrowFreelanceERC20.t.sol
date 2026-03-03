@@ -129,6 +129,80 @@ contract EscrowFreelanceTest is Test {
         escrowWithToken.performUpkeep(abi.encode(uint8(2)));
     }
 
+    function testRequestModificationUpdatesDeadlineAndState() public {
+        address client = escrowWithToken.getClientAddress();
+        address freelancer = escrowWithToken.getFreelancerAddress();
+        uint256 amount = 1000e18;
+
+        vm.prank(client);
+        token.approve(address(escrowWithToken), amount);
+
+        vm.prank(client);
+        escrowWithToken.fund(amount);
+
+        vm.prank(freelancer);
+        escrowWithToken.markWorkSubmitted();
+
+        uint256 initialDeadline = escrowWithToken.getDeadline();
+        uint256 extension = 2 days;
+
+        vm.prank(client);
+        escrowWithToken.requestModificationAndUpdateDeadline(extension);
+
+        assertEq(escrowWithToken.getModificationsRequested(), 1);
+        assertEq(escrowWithToken.getDeadline(), initialDeadline + extension);
+        assertEq(
+            uint256(escrowWithToken.getEscrowState()),
+            uint256(EscrowFreelance.EscrowState.PENDING_MODIFICATION)
+        );
+    }
+
+    function testRequestModificationOnlyClientCanCall() public {
+        address client = escrowWithToken.getClientAddress();
+        address freelancer = escrowWithToken.getFreelancerAddress();
+        uint256 amount = 1000e18;
+
+        vm.prank(client);
+        token.approve(address(escrowWithToken), amount);
+
+        vm.prank(client);
+        escrowWithToken.fund(amount);
+
+        vm.prank(freelancer);
+        escrowWithToken.markWorkSubmitted();
+
+        vm.prank(freelancer);
+        vm.expectRevert(Errors.OnlyClient.selector);
+        escrowWithToken.requestModificationAndUpdateDeadline(1 days);
+    }
+
+    function testRequestModificationRevertsAfterTwoRequests() public {
+        address client = escrowWithToken.getClientAddress();
+        address freelancer = escrowWithToken.getFreelancerAddress();
+        uint256 amount = 1000e18;
+
+        vm.prank(client);
+        token.approve(address(escrowWithToken), amount);
+
+        vm.prank(client);
+        escrowWithToken.fund(amount);
+
+        vm.prank(freelancer);
+        escrowWithToken.markWorkSubmitted();
+
+        vm.prank(client);
+        escrowWithToken.requestModificationAndUpdateDeadline(1 days);
+
+        vm.prank(client);
+        escrowWithToken.requestModificationAndUpdateDeadline(1 days);
+
+        assertEq(escrowWithToken.getModificationsRequested(), 2);
+
+        vm.prank(client);
+        vm.expectRevert(Errors.MaxModificationsReached.selector);
+        escrowWithToken.requestModificationAndUpdateDeadline(1 days);
+    }
+
     // ---------------------------
     // Refund Tests
     // ---------------------------

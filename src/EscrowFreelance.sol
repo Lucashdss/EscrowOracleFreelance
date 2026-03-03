@@ -41,8 +41,9 @@ contract EscrowFreelance is AutomationCompatibleInterface {
     bool private upFrontPaymentMade;
     uint256 private amountToRelease;
     uint256 private minimumPriceUSDinEther;
+    uint256 private modificationsRequested;
     uint256 private immutable iBPS; // basis points to calculate upfront payment
-    uint256 private immutable deadline;
+    uint256 private deadline;
     address public immutable iToken; // address(0) = ETH, otherwise ERC20
     address private immutable iClient;
     address private immutable iFreelancer;
@@ -138,6 +139,29 @@ contract EscrowFreelance is AutomationCompatibleInterface {
 
         deliveryConfirmed = true;
         emit DeliveryConfirmed(msg.sender);
+    }
+
+    function requestModificationAndUpdateDeadline(
+        uint256 deadlineExtension
+    ) external OnlyClient {
+        if (
+            state != EscrowState.WORK_SUBMITTED &&
+            state != EscrowState.PENDING_MODIFICATION
+        ) {
+            revert Errors.InvalidState();
+        }
+        if (modificationsRequested >= 2) {
+            revert Errors.MaxModificationsReached();
+        }
+
+        modificationsRequested += 1;
+
+        unchecked {
+            deadline += deadlineExtension;
+        }
+
+        state = EscrowState.PENDING_MODIFICATION;
+        emit StateChanged(EscrowState.PENDING_MODIFICATION);
     }
 
     function upfrontPayment() internal {
@@ -248,6 +272,10 @@ contract EscrowFreelance is AutomationCompatibleInterface {
 
     function getMinimumPriceUSD() external view returns (uint256) {
         return minimumPriceUSDinEther;
+    }
+
+    function getModificationsRequested() external view returns (uint256) {
+        return modificationsRequested;
     }
 
     function getTokenAddress() external view returns (address) {

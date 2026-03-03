@@ -15,4 +15,5 @@ library Errors {
     error AmountIsInferiorToMinimumUSD();
     error TokenAddressIsNotETH();
     error TokenAddressIsNotERC20();
+    error MaxModificationsReached();
 }
