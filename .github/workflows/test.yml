@@ -37,7 +37,7 @@ jobs:
       - name: Install dependencies
         run: |
           if [ ! -d lib/chainlink-brownie-contracts ]; then
-            forge install smartcontractkit/chainlink-brownie-contracts@17829c0bf25662156c916e78f00f0d73b46dfd4c --no-git
+            forge install smartcontractkit/chainlink-brownie-contracts --no-git
           fi
 
       - name: Run Forge build

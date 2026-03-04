@@ -11,8 +11,8 @@ remappings = [
 ]
 
 [dependencies]
-forge-std = "foundry-rs/forge-std@1801b0541f4fda118a10798fd3486bb7051c5dd6"
-openzeppelin-contracts = "OpenZeppelin/openzeppelin-contracts@fcbae5394ae8ad52d8e580a3477db99814b9d565"
-chainlink-brownie-contracts = "smartcontractkit/chainlink-brownie-contracts@17829c0bf25662156c916e78f00f0d73b46dfd4c"
+forge-std = "foundry-rs/forge-std"
+openzeppelin-contracts = "OpenZeppelin/openzeppelin-contracts"
+chainlink-brownie-contracts = "smartcontractkit/chainlink-brownie-contracts"
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
