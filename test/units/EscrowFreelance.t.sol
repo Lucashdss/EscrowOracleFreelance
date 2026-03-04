@@ -7,10 +7,14 @@ import {EscrowFreelance} from "../../src/EscrowFreelance.sol";
 import {DeployEscrow} from "../../script/DeployEscrow.s.sol";
 import {HelperConfig} from "../../script/HelperConfig.s.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import {Errors} from "../../src/libraries/Errors.sol";
 
 contract EscrowFreelanceTest is Test {
     EscrowFreelance escrow;
     uint256 sendValue = 1 ether;
+    event StateChanged(EscrowFreelance.EscrowState newState);
+    event DisputeInitiated(address initiator);
+    event ConflictResolved(address resolver, address winner);
 
     function setUp() public {
         escrow = new DeployEscrow().runWithETH();
@@ -343,5 +347,178 @@ contract EscrowFreelanceTest is Test {
         vm.prank(client);
         vm.expectRevert();
         escrow.fund{value: fundAmount}(fundAmount);
+    }
+
+    function testInitiateDisputeByClientFromWorkSubmitted() public {
+        address client = escrow.getClientAddress();
+        address freelancer = escrow.getFreelancerAddress();
+
+        vm.deal(client, 5 ether);
+        vm.prank(client);
+        escrow.fund{value: sendValue}(sendValue);
+
+        vm.prank(freelancer);
+        escrow.markWorkSubmitted();
+
+        vm.expectEmit(false, false, false, true, address(escrow));
+        emit StateChanged(EscrowFreelance.EscrowState.DISPUTE);
+        vm.expectEmit(false, false, false, true, address(escrow));
+        emit DisputeInitiated(client);
+
+        vm.prank(client);
+        escrow.initiateDispute();
+
+        assertEq(
+            uint256(escrow.getEscrowState()),
+            uint256(EscrowFreelance.EscrowState.DISPUTE)
+        );
+    }
+
+    function testInitiateDisputeByFreelancerFromPendingModification() public {
+        address client = escrow.getClientAddress();
+        address freelancer = escrow.getFreelancerAddress();
+
+        vm.deal(client, 5 ether);
+        vm.prank(client);
+        escrow.fund{value: sendValue}(sendValue);
+
+        vm.prank(freelancer);
+        escrow.markWorkSubmitted();
+
+        vm.prank(client);
+        escrow.requestModificationAndUpdateDeadline(1 days);
+
+        vm.prank(freelancer);
+        escrow.initiateDispute();
+
+        assertEq(
+            uint256(escrow.getEscrowState()),
+            uint256(EscrowFreelance.EscrowState.DISPUTE)
+        );
+    }
+
+    function testInitiateDisputeRevertsForUnauthorizedCaller() public {
+        address outsider = makeAddr("outsider");
+
+        vm.prank(outsider);
+        vm.expectRevert(Errors.OnlyClientOrFreelancer.selector);
+        escrow.initiateDispute();
+    }
+
+    function testInitiateDisputeRevertsWhenStateIsInvalid() public {
+        address client = escrow.getClientAddress();
+
+        vm.prank(client);
+        vm.expectRevert(Errors.InvalidState.selector);
+        escrow.initiateDispute();
+    }
+
+    function testResolveConflictRevertsWhenCallerIsNotAdmin() public {
+        address client = escrow.getClientAddress();
+        address freelancer = escrow.getFreelancerAddress();
+
+        vm.deal(client, 5 ether);
+        vm.prank(client);
+        escrow.fund{value: sendValue}(sendValue);
+        vm.prank(freelancer);
+        escrow.markWorkSubmitted();
+        vm.prank(client);
+        escrow.initiateDispute();
+
+        vm.prank(client);
+        vm.expectRevert(Errors.OnlyAdmin.selector);
+        escrow.resolveConflict(client);
+    }
+
+    function testResolveConflictRevertsWhenStateIsNotDispute() public {
+        address admin = escrow.getAdminAddress();
+        address client = escrow.getClientAddress();
+
+        vm.prank(admin);
+        vm.expectRevert(Errors.InvalidState.selector);
+        escrow.resolveConflict(client);
+    }
+
+    function testResolveConflictRevertsForInvalidWinnerAddress() public {
+        address admin = escrow.getAdminAddress();
+        address client = escrow.getClientAddress();
+        address freelancer = escrow.getFreelancerAddress();
+        address outsider = makeAddr("outsider-winner");
+
+        vm.deal(client, 5 ether);
+        vm.prank(client);
+        escrow.fund{value: sendValue}(sendValue);
+        vm.prank(freelancer);
+        escrow.markWorkSubmitted();
+        vm.prank(client);
+        escrow.initiateDispute();
+
+        vm.prank(admin);
+        vm.expectRevert(Errors.InvalidConflictWinner.selector);
+        escrow.resolveConflict(outsider);
+    }
+
+    function testResolveConflictRefundsClientWhenWinnerIsClient() public {
+        address admin = escrow.getAdminAddress();
+        address client = escrow.getClientAddress();
+        address freelancer = escrow.getFreelancerAddress();
+
+        vm.deal(client, 5 ether);
+        vm.prank(client);
+        escrow.fund{value: sendValue}(sendValue);
+        vm.prank(freelancer);
+        escrow.markWorkSubmitted();
+        vm.prank(client);
+        escrow.initiateDispute();
+
+        uint256 clientBalanceBefore = client.balance;
+
+        vm.expectEmit(false, false, false, true, address(escrow));
+        emit StateChanged(EscrowFreelance.EscrowState.REFUNDED);
+        vm.expectEmit(false, false, false, true, address(escrow));
+        emit ConflictResolved(admin, client);
+
+        vm.prank(admin);
+        escrow.resolveConflict(client);
+
+        assertEq(
+            uint256(escrow.getEscrowState()),
+            uint256(EscrowFreelance.EscrowState.REFUNDED)
+        );
+        assertEq(client.balance, clientBalanceBefore + sendValue);
+        assertEq(escrow.getAmountToRelease(), 0);
+    }
+
+    function testResolveConflictReleasesFreelancerWhenWinnerIsFreelancer()
+        public
+    {
+        address admin = escrow.getAdminAddress();
+        address client = escrow.getClientAddress();
+        address freelancer = escrow.getFreelancerAddress();
+
+        vm.deal(client, 5 ether);
+        vm.prank(client);
+        escrow.fund{value: sendValue}(sendValue);
+        vm.prank(freelancer);
+        escrow.markWorkSubmitted();
+        vm.prank(client);
+        escrow.initiateDispute();
+
+        uint256 freelancerBalanceBefore = freelancer.balance;
+
+        vm.expectEmit(false, false, false, true, address(escrow));
+        emit StateChanged(EscrowFreelance.EscrowState.RELEASED);
+        vm.expectEmit(false, false, false, true, address(escrow));
+        emit ConflictResolved(admin, freelancer);
+
+        vm.prank(admin);
+        escrow.resolveConflict(freelancer);
+
+        assertEq(
+            uint256(escrow.getEscrowState()),
+            uint256(EscrowFreelance.EscrowState.RELEASED)
+        );
+        assertEq(freelancer.balance, freelancerBalanceBefore + sendValue);
+        assertEq(escrow.getAmountToRelease(), 0);
     }
 }

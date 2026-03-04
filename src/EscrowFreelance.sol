@@ -56,6 +56,8 @@ contract EscrowFreelance is AutomationCompatibleInterface {
     event DeliveryConfirmed(address client);
     event MinimumPriceUpdated(uint256 newMinimumPrice);
     event UpfrontPaymentSent(uint256 bps, uint256 amountSent);
+    event DisputeInitiated(address initiator);
+    event ConflictResolved(address resolver, address winner);
 
     modifier OnlyClient() {
         if (msg.sender != iClient) {
@@ -67,6 +69,20 @@ contract EscrowFreelance is AutomationCompatibleInterface {
     modifier OnlyFreelancer() {
         if (msg.sender != iFreelancer) {
             revert Errors.OnlyFreelancer();
+        }
+        _;
+    }
+
+    modifier OnlyAdmin() {
+        if (msg.sender != iAdmin) {
+            revert Errors.OnlyAdmin();
+        }
+        _;
+    }
+
+    modifier OnlyClientOrFreelancer() {
+        if (msg.sender != iClient && msg.sender != iFreelancer) {
+            revert Errors.OnlyClientOrFreelancer();
         }
         _;
     }
@@ -162,6 +178,39 @@ contract EscrowFreelance is AutomationCompatibleInterface {
 
         state = EscrowState.PENDING_MODIFICATION;
         emit StateChanged(EscrowState.PENDING_MODIFICATION);
+    }
+
+    function initiateDispute() external OnlyClientOrFreelancer {
+        if (
+            state != EscrowState.WORK_SUBMITTED &&
+            state != EscrowState.PENDING_MODIFICATION
+        ) {
+            revert Errors.InvalidState();
+        }
+
+        state = EscrowState.DISPUTE;
+        emit StateChanged(EscrowState.DISPUTE);
+        emit DisputeInitiated(msg.sender);
+    }
+
+    function resolveConflict(address winner) external OnlyAdmin {
+        if (state != EscrowState.DISPUTE) {
+            revert Errors.InvalidState();
+        }
+        if (winner != iClient && winner != iFreelancer) {
+            revert Errors.InvalidConflictWinner();
+        }
+
+        isPerformingUpkeep = true;
+
+        if (winner == iClient) {
+            deadlinePassedRefundClient();
+        } else {
+            releaseFunds();
+        }
+
+        isPerformingUpkeep = false;
+        emit ConflictResolved(msg.sender, winner);
     }
 
     function upfrontPayment() internal {
@@ -328,10 +377,12 @@ contract EscrowFreelance is AutomationCompatibleInterface {
     }
 
     function releaseFunds() internal OnlyPerformUpkeep {
-        if (state != EscrowState.WORK_SUBMITTED) {
+        if (
+            state != EscrowState.WORK_SUBMITTED && state != EscrowState.DISPUTE
+        ) {
             revert Errors.InvalidState();
         }
-        if (!deliveryConfirmed) {
+        if (state == EscrowState.WORK_SUBMITTED && !deliveryConfirmed) {
             revert Errors.DeliverNotConfirmed();
         }
 

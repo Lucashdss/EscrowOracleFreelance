@@ -4,6 +4,9 @@ pragma solidity ^0.8.19;
 library Errors {
     error OnlyClient();
     error OnlyFreelancer();
+    error OnlyAdmin();
+    error OnlyClientOrFreelancer();
+    error InvalidConflictWinner();
     error InvalidState();
     error DeliveryPeriodNotOver();
     error DeliverNotConfirmed();
