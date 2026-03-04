@@ -58,16 +58,8 @@ contract EscrowFreelanceWithBPS is Test {
         escrow20Bps.fund{value: SEND_VALUE}(SEND_VALUE);
 
         uint256 expectedUpfront = (SEND_VALUE * 2000) / 10_000;
-        assertEq(
-            freelancer.balance - freelancerBalanceBefore,
-            expectedUpfront,
-            "Freelancer should receive 20% upfront"
-        );
-        assertEq(
-            escrow20Bps.getAmountToRelease(),
-            SEND_VALUE - expectedUpfront,
-            "Escrow remainder should match 80%"
-        );
+        assertEq(freelancer.balance - freelancerBalanceBefore, expectedUpfront, "Freelancer should receive 20% upfront");
+        assertEq(escrow20Bps.getAmountToRelease(), SEND_VALUE - expectedUpfront, "Escrow remainder should match 80%");
     }
 
     function testFundingWith50PercentBpsSendsExpectedUpfront() public {
@@ -82,16 +74,8 @@ contract EscrowFreelanceWithBPS is Test {
         escrow50Bps.fund{value: SEND_VALUE}(SEND_VALUE);
 
         uint256 expectedUpfront = (SEND_VALUE * 5000) / 10_000;
-        assertEq(
-            freelancer.balance - freelancerBalanceBefore,
-            expectedUpfront,
-            "Freelancer should receive 50% upfront"
-        );
-        assertEq(
-            escrow50Bps.getAmountToRelease(),
-            SEND_VALUE - expectedUpfront,
-            "Escrow remainder should match 50%"
-        );
+        assertEq(freelancer.balance - freelancerBalanceBefore, expectedUpfront, "Freelancer should receive 50% upfront");
+        assertEq(escrow50Bps.getAmountToRelease(), SEND_VALUE - expectedUpfront, "Escrow remainder should match 50%");
     }
 
     function testFundingTwiceWith10PercentBpsPaysUpfrontOnlyOnce() public {
@@ -108,9 +92,7 @@ contract EscrowFreelanceWithBPS is Test {
 
         uint256 expectedUpfrontOnce = (SEND_VALUE * BPS) / 10_000;
         assertEq(
-            freelancer.balance - freelancerBalanceBefore,
-            expectedUpfrontOnce,
-            "Upfront payment must be sent only once"
+            freelancer.balance - freelancerBalanceBefore, expectedUpfrontOnce, "Upfront payment must be sent only once"
         );
         assertEq(
             escrowWithBPS.getAmountToRelease(),
@@ -119,22 +101,14 @@ contract EscrowFreelanceWithBPS is Test {
         );
     }
 
-    function _deployEscrowWithBps(
-        uint256 customBps
-    ) internal returns (EscrowFreelance) {
+    function _deployEscrowWithBps(uint256 customBps) internal returns (EscrowFreelance) {
         address freelancer = makeAddr("freelancer-custom-bps");
         address admin = makeAddr("admin-custom-bps");
         uint256 deliveryPeriod = 7 days;
         HelperConfig helperConfig = new HelperConfig();
 
-        return
-            new EscrowFreelance(
-                freelancer,
-                deliveryPeriod,
-                helperConfig.activeNetworkConfig(),
-                address(0),
-                admin,
-                customBps
-            );
+        return new EscrowFreelance(
+            freelancer, deliveryPeriod, helperConfig.activeNetworkConfig(), address(0), admin, customBps
+        );
     }
 }

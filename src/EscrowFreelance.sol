@@ -157,13 +157,8 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         emit DeliveryConfirmed(msg.sender);
     }
 
-    function requestModificationAndUpdateDeadline(
-        uint256 deadlineExtension
-    ) external OnlyClient {
-        if (
-            state != EscrowState.WORK_SUBMITTED &&
-            state != EscrowState.PENDING_MODIFICATION
-        ) {
+    function requestModificationAndUpdateDeadline(uint256 deadlineExtension) external OnlyClient {
+        if (state != EscrowState.WORK_SUBMITTED && state != EscrowState.PENDING_MODIFICATION) {
             revert Errors.InvalidState();
         }
         if (modificationsRequested >= 2) {
@@ -181,10 +176,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
     }
 
     function initiateDispute() external OnlyClientOrFreelancer {
-        if (
-            state != EscrowState.WORK_SUBMITTED &&
-            state != EscrowState.PENDING_MODIFICATION
-        ) {
+        if (state != EscrowState.WORK_SUBMITTED && state != EscrowState.PENDING_MODIFICATION) {
             revert Errors.InvalidState();
         }
 
@@ -225,9 +217,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
 
         if (iToken == address(0)) {
             // ETH transfer
-            (bool success, ) = payable(iFreelancer).call{value: upfrontAmount}(
-                ""
-            );
+            (bool success,) = payable(iFreelancer).call{value: upfrontAmount}("");
             if (!success) {
                 revert Errors.TransferFailed();
             }
@@ -244,9 +234,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         }
     }
 
-    function fund(
-        uint256 amount
-    ) external payable OnlyClient beforeFund(amount) {
+    function fund(uint256 amount) external payable OnlyClient beforeFund(amount) {
         if (iToken == address(0)) {
             // ETH escrow
             if (msg.value != amount) {
@@ -335,14 +323,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         return iAdmin;
     }
 
-    function checkUpkeep(
-        bytes calldata
-    )
-        external
-        view
-        override
-        returns (bool upkeepNeeded, bytes memory performData)
-    {
+    function checkUpkeep(bytes calldata) external view override returns (bool upkeepNeeded, bytes memory performData) {
         // if deadline has passed and state is FUNDED, we need to perform upkeep to refund
         if (block.timestamp > deadline && state == EscrowState.FUNDED) {
             upkeepNeeded = true;
@@ -358,16 +339,13 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         return (upkeepNeeded, performData);
     }
 
-    function convertAmountFromUSDtoETH(
-        uint256 usdAmount
-    ) public view returns (uint256) {
+    function convertAmountFromUSDtoETH(uint256 usdAmount) public view returns (uint256) {
         AggregatorV3Interface priceFeed = AggregatorV3Interface(iDataFeed);
-        (, int256 price, , , ) = priceFeed.latestRoundData();
+        (, int256 price,,,) = priceFeed.latestRoundData();
         uint256 adjustedPrice = uint256(price) * 1e10; // Adjust to 18 decimals
 
         // ceil instead of floor to avoid rounding below minimum
-        uint256 ethAmount = (usdAmount * 1e18 + adjustedPrice - 1) /
-            adjustedPrice;
+        uint256 ethAmount = (usdAmount * 1e18 + adjustedPrice - 1) / adjustedPrice;
         return ethAmount;
     }
 
@@ -377,9 +355,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
     }
 
     function releaseFunds() internal OnlyPerformUpkeep {
-        if (
-            state != EscrowState.WORK_SUBMITTED && state != EscrowState.DISPUTE
-        ) {
+        if (state != EscrowState.WORK_SUBMITTED && state != EscrowState.DISPUTE) {
             revert Errors.InvalidState();
         }
         if (state == EscrowState.WORK_SUBMITTED && !deliveryConfirmed) {
@@ -391,9 +367,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
 
         if (iToken == address(0)) {
             // ETH transfer
-            (bool success, ) = payable(iFreelancer).call{
-                value: amountToRelease
-            }("");
+            (bool success,) = payable(iFreelancer).call{value: amountToRelease}("");
             if (!success) {
                 revert Errors.TransferFailed();
             }
@@ -422,7 +396,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
 
         if (iToken == address(0)) {
             // ETH transfer
-            (bool success, ) = payable(iClient).call{value: amount}("");
+            (bool success,) = payable(iClient).call{value: amount}("");
             if (!success) {
                 revert Errors.TransferFailed();
             }

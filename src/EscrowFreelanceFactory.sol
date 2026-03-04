@@ -22,23 +22,8 @@ contract EscrowFreelanceFactory {
         address admin,
         uint256 bps
     ) external returns (address escrow) {
-        EscrowFreelance instance = new EscrowFreelance(
-            freelancer,
-            deliveryPeriod,
-            dataFeed,
-            token,
-            admin,
-            bps
-        );
+        EscrowFreelance instance = new EscrowFreelance(freelancer, deliveryPeriod, dataFeed, token, admin, bps);
         escrow = address(instance);
-        emit EscrowCreated(
-            escrow,
-            msg.sender,
-            freelancer,
-            token,
-            deliveryPeriod,
-            dataFeed,
-            bps
-        );
+        emit EscrowCreated(escrow, msg.sender, freelancer, token, deliveryPeriod, dataFeed, bps);
     }
 }

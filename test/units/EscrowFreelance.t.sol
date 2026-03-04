@@ -49,17 +49,9 @@ contract EscrowFreelanceTest is Test {
 
         uint256 escrowFinalBalance = escrow.getAmountToRelease();
 
-        assertEq(
-            escrowFinalBalance,
-            escrowInitialBalance + sendValue,
-            "Escrow balance did not increase correctly"
-        );
+        assertEq(escrowFinalBalance, escrowInitialBalance + sendValue, "Escrow balance did not increase correctly");
 
-        assertEq(
-            client.balance,
-            clientInitialBalance - sendValue,
-            "Client balance did not decrease correctly"
-        );
+        assertEq(client.balance, clientInitialBalance - sendValue, "Client balance did not decrease correctly");
     }
 
     function testClientMarkDeliverConfirmed() public {
@@ -77,11 +69,7 @@ contract EscrowFreelanceTest is Test {
         escrow.confirmDelivery();
         bool deliveryConfirmed = escrow.getDeliveryConfirmedState();
 
-        assertEq(
-            deliveryConfirmed,
-            true,
-            "Delivery confirmed state did not update to true"
-        );
+        assertEq(deliveryConfirmed, true, "Delivery confirmed state did not update to true");
     }
 
     function testFreelancertmarkWorkSubmitted() public {
@@ -138,11 +126,7 @@ contract EscrowFreelanceTest is Test {
         (bool upkeepNeeded, bytes memory performData) = escrow.checkUpkeep("");
         uint8 action = abi.decode(performData, (uint8));
 
-        assertEq(
-            upkeepNeeded,
-            true,
-            "Upkeep should be needed when deadline has passed and state is FUNDED"
-        );
+        assertEq(upkeepNeeded, true, "Upkeep should be needed when deadline has passed and state is FUNDED");
         assertEq(action, 1, "PerformData should be empty for this upkeep");
     }
 
@@ -173,9 +157,7 @@ contract EscrowFreelanceTest is Test {
         uint256 freelancerFinalBalance = freelancer.balance;
 
         assertEq(
-            freelancerFinalBalance,
-            freelancerInitialBalance + 1 ether,
-            "Freelancer should receive the correct amount"
+            freelancerFinalBalance, freelancerInitialBalance + 1 ether, "Freelancer should receive the correct amount"
         );
     }
 
@@ -195,11 +177,7 @@ contract EscrowFreelanceTest is Test {
         (bool upkeepNeeded, bytes memory performData) = escrow.checkUpkeep("");
         uint8 action = abi.decode(performData, (uint8));
 
-        assertEq(
-            upkeepNeeded,
-            true,
-            "Upkeep should be needed when state is DELIVERED and delivery is confirmed"
-        );
+        assertEq(upkeepNeeded, true, "Upkeep should be needed when state is DELIVERED and delivery is confirmed");
         assertEq(action, 2, "PerformData should be empty for this upkeep");
     }
 
@@ -215,16 +193,8 @@ contract EscrowFreelanceTest is Test {
         // Call checkUpkeep and verify the result
         (bool upkeepNeeded, bytes memory performData) = escrow.checkUpkeep("");
 
-        assertEq(
-            upkeepNeeded,
-            false,
-            "Upkeep should not be needed in the CREATED state"
-        );
-        assertEq(
-            performData.length,
-            0,
-            "PerformData should be empty when no upkeep is needed"
-        );
+        assertEq(upkeepNeeded, false, "Upkeep should not be needed in the CREATED state");
+        assertEq(performData.length, 0, "PerformData should be empty when no upkeep is needed");
     }
 
     function testGetVersion() public view {
@@ -236,19 +206,16 @@ contract EscrowFreelanceTest is Test {
         uint256 usdAmount = 1000e18;
 
         // Read oracle price directly
-        AggregatorV3Interface feed = AggregatorV3Interface(
-            escrow.getDataFeedAddress()
-        );
+        AggregatorV3Interface feed = AggregatorV3Interface(escrow.getDataFeedAddress());
 
-        (, int256 price, , , ) = feed.latestRoundData();
+        (, int256 price,,,) = feed.latestRoundData();
         require(price > 0, "Invalid oracle price");
 
         // Chainlink ETH/USD has 8 decimals → scale to 18
         uint256 adjustedPrice = uint256(price) * 1e10;
 
         // Same formula used in the contract (ceil division)
-        uint256 expectedEth = (usdAmount * 1e18 + adjustedPrice - 1) /
-            adjustedPrice;
+        uint256 expectedEth = (usdAmount * 1e18 + adjustedPrice - 1) / adjustedPrice;
 
         uint256 ethAmount = escrow.convertAmountFromUSDtoETH(usdAmount);
 
@@ -272,11 +239,7 @@ contract EscrowFreelanceTest is Test {
 
         uint256 actualDeadline = escrow.getDeadline();
 
-        assertEq(
-            actualDeadline,
-            expectedDeadline,
-            "Deadline is not set correctly"
-        );
+        assertEq(actualDeadline, expectedDeadline, "Deadline is not set correctly");
     }
 
     function testDataFeedAddressCorrect() public {
@@ -287,11 +250,7 @@ contract EscrowFreelanceTest is Test {
 
         address dataFeedAddressFromContract = escrow.getDataFeedAddress();
 
-        assertEq(
-            dataFeedAddressFromContract,
-            dataFeedAddressFromHelper,
-            "Data feed address is not set correctly"
-        );
+        assertEq(dataFeedAddressFromContract, dataFeedAddressFromHelper, "Data feed address is not set correctly");
     }
 
     // this test is only meaningful on anvil local blockchain
@@ -312,11 +271,7 @@ contract EscrowFreelanceTest is Test {
         escrow.fund{value: valueToSend}(valueToSend);
         uint256 escrowBalance = address(escrow).balance;
 
-        assertEq(
-            escrowBalance - balanceBefore,
-            valueToSend,
-            "Escrow balance should be one ether"
-        );
+        assertEq(escrowBalance - balanceBefore, valueToSend, "Escrow balance should be one ether");
     }
 
     function testSetMininumUSD() public {
@@ -337,8 +292,7 @@ contract EscrowFreelanceTest is Test {
         address freelancer = escrow.getFreelancerAddress();
         address client = escrow.getClientAddress();
         uint256 newMinimumUSD = 200;
-        uint256 fundAmount = escrow.convertAmountFromUSDtoETH(newMinimumUSD) -
-            1;
+        uint256 fundAmount = escrow.convertAmountFromUSDtoETH(newMinimumUSD) - 1;
 
         vm.prank(freelancer);
         escrow.setMinimumPriceUSD(newMinimumUSD);
@@ -368,10 +322,7 @@ contract EscrowFreelanceTest is Test {
         vm.prank(client);
         escrow.initiateDispute();
 
-        assertEq(
-            uint256(escrow.getEscrowState()),
-            uint256(EscrowFreelance.EscrowState.DISPUTE)
-        );
+        assertEq(uint256(escrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.DISPUTE));
     }
 
     function testInitiateDisputeByFreelancerFromPendingModification() public {
@@ -391,10 +342,7 @@ contract EscrowFreelanceTest is Test {
         vm.prank(freelancer);
         escrow.initiateDispute();
 
-        assertEq(
-            uint256(escrow.getEscrowState()),
-            uint256(EscrowFreelance.EscrowState.DISPUTE)
-        );
+        assertEq(uint256(escrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.DISPUTE));
     }
 
     function testInitiateDisputeRevertsForUnauthorizedCaller() public {
@@ -481,17 +429,12 @@ contract EscrowFreelanceTest is Test {
         vm.prank(admin);
         escrow.resolveConflict(client);
 
-        assertEq(
-            uint256(escrow.getEscrowState()),
-            uint256(EscrowFreelance.EscrowState.REFUNDED)
-        );
+        assertEq(uint256(escrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.REFUNDED));
         assertEq(client.balance, clientBalanceBefore + sendValue);
         assertEq(escrow.getAmountToRelease(), 0);
     }
 
-    function testResolveConflictReleasesFreelancerWhenWinnerIsFreelancer()
-        public
-    {
+    function testResolveConflictReleasesFreelancerWhenWinnerIsFreelancer() public {
         address admin = escrow.getAdminAddress();
         address client = escrow.getClientAddress();
         address freelancer = escrow.getFreelancerAddress();
@@ -514,10 +457,7 @@ contract EscrowFreelanceTest is Test {
         vm.prank(admin);
         escrow.resolveConflict(freelancer);
 
-        assertEq(
-            uint256(escrow.getEscrowState()),
-            uint256(EscrowFreelance.EscrowState.RELEASED)
-        );
+        assertEq(uint256(escrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.RELEASED));
         assertEq(freelancer.balance, freelancerBalanceBefore + sendValue);
         assertEq(escrow.getAmountToRelease(), 0);
     }

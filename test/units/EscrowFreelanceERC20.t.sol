@@ -62,9 +62,7 @@ contract EscrowFreelanceTest is Test {
         escrowWithToken.setMinimumPriceUSD(usdAmount);
 
         address client = escrowWithToken.getClientAddress();
-        uint256 amountTooLow = escrowWithToken.convertAmountFromUSDtoETH(
-            usdAmount
-        ) - 1;
+        uint256 amountTooLow = escrowWithToken.convertAmountFromUSDtoETH(usdAmount) - 1;
 
         vm.prank(client);
         token.approve(address(escrowWithToken), amountTooLow);
@@ -95,8 +93,7 @@ contract EscrowFreelanceTest is Test {
         vm.prank(client);
         escrowWithToken.confirmDelivery();
 
-        (bool upkeepNeeded, bytes memory performData) = escrowWithToken
-            .checkUpkeep("");
+        (bool upkeepNeeded, bytes memory performData) = escrowWithToken.checkUpkeep("");
         assertTrue(upkeepNeeded, "Upkeep should be needed");
 
         uint256 freelancerBalanceBefore = token.balanceOf(freelancer);
@@ -151,10 +148,7 @@ contract EscrowFreelanceTest is Test {
 
         assertEq(escrowWithToken.getModificationsRequested(), 1);
         assertEq(escrowWithToken.getDeadline(), initialDeadline + extension);
-        assertEq(
-            uint256(escrowWithToken.getEscrowState()),
-            uint256(EscrowFreelance.EscrowState.PENDING_MODIFICATION)
-        );
+        assertEq(uint256(escrowWithToken.getEscrowState()), uint256(EscrowFreelance.EscrowState.PENDING_MODIFICATION));
     }
 
     function testRequestModificationOnlyClientCanCall() public {
@@ -220,8 +214,7 @@ contract EscrowFreelanceTest is Test {
         // Move forward past deadline
         vm.warp(block.timestamp + 8 days);
 
-        (bool upkeepNeeded, bytes memory performData) = escrowWithToken
-            .checkUpkeep("");
+        (bool upkeepNeeded, bytes memory performData) = escrowWithToken.checkUpkeep("");
         assertTrue(upkeepNeeded, "Upkeep should be needed for refund");
 
         uint256 clientBalanceBefore = token.balanceOf(client);
@@ -263,8 +256,7 @@ contract EscrowFreelanceTest is Test {
         vm.prank(client);
         escrowWithToken.confirmDelivery();
 
-        (bool upkeepNeeded, bytes memory performData) = escrowWithToken
-            .checkUpkeep("");
+        (bool upkeepNeeded, bytes memory performData) = escrowWithToken.checkUpkeep("");
         vm.prank(address(this));
         escrowWithToken.performUpkeep(performData);
 
@@ -273,9 +265,7 @@ contract EscrowFreelanceTest is Test {
         token.approve(address(escrowWithToken), amount);
 
         vm.prank(client);
-        vm.expectRevert(
-            Errors.ContractHasBeenAlreadyReleasedOrRefunded.selector
-        );
+        vm.expectRevert(Errors.ContractHasBeenAlreadyReleasedOrRefunded.selector);
         escrowWithToken.fund(amount);
     }
 }
