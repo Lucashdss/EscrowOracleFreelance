@@ -4,6 +4,8 @@ permissions: {}
 
 on:
   push:
+    branches:
+      - master
   pull_request:
   workflow_dispatch:
 
@@ -28,7 +30,8 @@ jobs:
       - name: Show Forge version
         run: forge --version
 
-      - name: Run Forge fmt
+      - name: Check formatting
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: forge fmt --check
 
       - name: Run Forge build
@@ -36,3 +39,7 @@ jobs:
 
       - name: Run Forge tests
         run: forge test -vvv
+
+      - name: Gas report
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: forge test --gas-report
