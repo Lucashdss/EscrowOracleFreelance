@@ -414,4 +414,12 @@ contract EscrowFreelance is AutomationCompatibleInterface {
 
         emit FundsRefunded(iClient, amount);
     }
+
+    fallback() external payable {
+        revert("Please use the website to interact with this contract");
+    }
+
+    receive() external payable {
+        revert("Please use the website to interact with this contract");
+    }
 }
