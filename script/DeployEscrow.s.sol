@@ -15,6 +15,7 @@ contract DeployEscrow is Script {
 
         vm.startBroadcast();
         EscrowFreelance escrow = new EscrowFreelance(
+            msg.sender,
             freelancer,
             deliveryPeriod,
             helperConfig.activeNetworkConfig(),
@@ -35,6 +36,7 @@ contract DeployEscrow is Script {
 
         vm.startBroadcast();
         EscrowFreelance escrow = new EscrowFreelance(
+            msg.sender,
             freelancer,
             deliveryPeriod,
             helperConfig.activeNetworkConfig(),
@@ -57,6 +59,7 @@ contract DeployEscrow is Script {
 
         vm.startBroadcast();
         EscrowFreelance escrow = new EscrowFreelance(
+            msg.sender,
             freelancer,
             deliveryPeriod,
             helperConfig.activeNetworkConfig(),

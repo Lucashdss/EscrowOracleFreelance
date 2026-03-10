@@ -113,6 +113,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
     }
 
     constructor(
+        address _client,
         address _freelancer,
         uint256 _deliveryPeriod,
         address _dataFeed,
@@ -120,7 +121,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         address _admin,
         uint256 _bps
     ) {
-        iClient = msg.sender;
+        iClient = _client;
         iFreelancer = _freelancer;
         iDataFeed = _dataFeed;
         iToken = _token; // address(0) = ETH
