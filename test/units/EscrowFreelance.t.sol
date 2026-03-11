@@ -20,6 +20,8 @@ contract EscrowFreelanceTest is Test {
         escrow = new DeployEscrow().runWithETH();
     }
 
+    receive() external payable {}
+
     function testContractBalanceFunded() public {
         address client = escrow.getClientAddress();
         uint256 usdAmount = 2000e18;

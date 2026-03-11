@@ -138,6 +138,79 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         } else {
             upFrontPaymentMade = true;
         }
+
+        emit StateChanged(EscrowState.CREATED);
+    }
+
+    function setMinimumPriceUSD(uint256 usdAmount) external OnlyFreelancer {
+        if (state != EscrowState.CREATED) {
+            revert Errors.ContractHasBeenAlreadyFunded();
+        }
+        uint256 ethAmount = convertAmountFromUSDtoETH(usdAmount);
+        minimumPriceUSDinEther = ethAmount;
+
+        emit MinimumPriceUpdated(usdAmount);
+    }
+
+    function convertAmountFromUSDtoETH(uint256 usdAmount) public view returns (uint256) {
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(iDataFeed);
+        (, int256 price,,,) = priceFeed.latestRoundData();
+        uint256 adjustedPrice = uint256(price) * 1e10; // Adjust to 18 decimals
+
+        // ceil instead of floor to avoid rounding below minimum
+        uint256 ethAmount = (usdAmount * 1e18 + adjustedPrice - 1) / adjustedPrice;
+        return ethAmount;
+    }
+
+    function upfrontPayment() internal {
+        if (upFrontPaymentMade) {
+            return;
+        }
+
+        uint256 upfrontAmount = (amountToRelease * iBPS) / 10000;
+        amountToRelease -= upfrontAmount;
+        upFrontPaymentMade = true;
+        emit UpfrontPaymentSent(iBPS, upfrontAmount);
+
+        if (iToken == address(0)) {
+            // ETH transfer
+            (bool success,) = payable(iFreelancer).call{value: upfrontAmount}("");
+            if (!success) {
+                revert Errors.TransferFailed();
+            }
+        } else {
+            // ERC20 transfer
+            IERC20 token = IERC20(iToken);
+            uint256 balance = token.balanceOf(address(this));
+
+            if (balance < upfrontAmount) {
+                revert Errors.InsufficientFunds();
+            }
+
+            token.safeTransfer(iFreelancer, upfrontAmount);
+        }
+    }
+
+    function fund(uint256 amount) external payable OnlyClient beforeFund(amount) {
+        if (iToken == address(0)) {
+            // ETH escrow
+            if (msg.value != amount) {
+                revert Errors.TokenAddressIsNotERC20();
+            }
+        } else {
+            // ERC20 escrow
+            if (msg.value != 0) {
+                revert Errors.TokenAddressIsNotETH();
+            }
+
+            IERC20(iToken).safeTransferFrom(msg.sender, address(this), amount);
+        }
+
+        amountToRelease += amount;
+
+        if (iBPS > 0 && !upFrontPaymentMade) {
+            upfrontPayment();
+        }
     }
 
     function markWorkSubmitted() external OnlyFreelancer {
@@ -206,155 +279,6 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         emit ConflictResolved(msg.sender, winner);
     }
 
-    function upfrontPayment() internal {
-        if (upFrontPaymentMade) {
-            return;
-        }
-
-        uint256 upfrontAmount = (amountToRelease * iBPS) / 10000;
-        amountToRelease -= upfrontAmount;
-        upFrontPaymentMade = true;
-        emit UpfrontPaymentSent(iBPS, upfrontAmount);
-
-        if (iToken == address(0)) {
-            // ETH transfer
-            (bool success,) = payable(iFreelancer).call{value: upfrontAmount}("");
-            if (!success) {
-                revert Errors.TransferFailed();
-            }
-        } else {
-            // ERC20 transfer
-            IERC20 token = IERC20(iToken);
-            uint256 balance = token.balanceOf(address(this));
-
-            if (balance < upfrontAmount) {
-                revert Errors.InsufficientFunds();
-            }
-
-            token.safeTransfer(iFreelancer, upfrontAmount);
-        }
-    }
-
-    function fund(uint256 amount) external payable OnlyClient beforeFund(amount) {
-        if (iToken == address(0)) {
-            // ETH escrow
-            if (msg.value != amount) {
-                revert Errors.TokenAddressIsNotERC20();
-            }
-        } else {
-            // ERC20 escrow
-            if (msg.value != 0) {
-                revert Errors.TokenAddressIsNotETH();
-            }
-
-            IERC20(iToken).safeTransferFrom(msg.sender, address(this), amount);
-        }
-
-        amountToRelease += amount;
-
-        if (iBPS > 0 && !upFrontPaymentMade) {
-            upfrontPayment();
-        }
-    }
-
-    function setMinimumPriceUSD(uint256 usdAmount) external OnlyFreelancer {
-        if (state != EscrowState.CREATED) {
-            revert Errors.ContractHasBeenAlreadyFunded();
-        }
-        uint256 ethAmount = convertAmountFromUSDtoETH(usdAmount);
-        minimumPriceUSDinEther = ethAmount;
-
-        emit MinimumPriceUpdated(usdAmount);
-    }
-
-    function performUpkeep(bytes calldata performData) external override {
-        uint8 action = abi.decode(performData, (uint8));
-        if (action == 1) {
-            isPerformingUpkeep = true;
-            deadlinePassedRefundClient();
-            isPerformingUpkeep = false;
-        } else if (action == 2) {
-            isPerformingUpkeep = true;
-            releaseFunds();
-            isPerformingUpkeep = false;
-        }
-    }
-
-    function getDeadline() external view returns (uint256) {
-        return deadline;
-    }
-
-    function getAmountToRelease() external view returns (uint256) {
-        return amountToRelease;
-    }
-
-    function getClientAddress() external view returns (address) {
-        return iClient;
-    }
-
-    function getFreelancerAddress() external view returns (address) {
-        return iFreelancer;
-    }
-
-    function getEscrowState() external view returns (EscrowState) {
-        return state;
-    }
-
-    function getDeliveryConfirmedState() external view returns (bool) {
-        return deliveryConfirmed;
-    }
-
-    function getDataFeedAddress() external view returns (address) {
-        return iDataFeed;
-    }
-
-    function getMinimumPriceUSD() external view returns (uint256) {
-        return minimumPriceUSDinEther;
-    }
-
-    function getModificationsRequested() external view returns (uint256) {
-        return modificationsRequested;
-    }
-
-    function getTokenAddress() external view returns (address) {
-        return iToken;
-    }
-
-    function getAdminAddress() external view returns (address) {
-        return iAdmin;
-    }
-
-    function checkUpkeep(bytes calldata) external view override returns (bool upkeepNeeded, bytes memory performData) {
-        // if deadline has passed and state is FUNDED, we need to perform upkeep to refund
-        if (block.timestamp > deadline && state == EscrowState.FUNDED) {
-            upkeepNeeded = true;
-            performData = abi.encode(uint8(1)); // No additional data needed for performUpkeep
-        } else if (state == EscrowState.WORK_SUBMITTED && deliveryConfirmed) {
-            upkeepNeeded = true;
-            performData = abi.encode(uint8(2)); // No additional data needed for performUpkeep
-        } else {
-            upkeepNeeded = false;
-            performData = "";
-        }
-
-        return (upkeepNeeded, performData);
-    }
-
-    function convertAmountFromUSDtoETH(uint256 usdAmount) public view returns (uint256) {
-        AggregatorV3Interface priceFeed = AggregatorV3Interface(iDataFeed);
-        (, int256 price,,,) = priceFeed.latestRoundData();
-        uint256 adjustedPrice = uint256(price) * 1e10; // Adjust to 18 decimals
-
-        // ceil instead of floor to avoid rounding below minimum
-        uint256 ethAmount = (usdAmount * 1e18 + adjustedPrice - 1) / adjustedPrice;
-        return ethAmount;
-    }
-
-    function getVersion() public view returns (uint256) {
-        AggregatorV3Interface priceFeed = AggregatorV3Interface(iDataFeed);
-        return priceFeed.version();
-    }
-
     function releaseFunds() internal OnlyPerformUpkeep {
         if (state != EscrowState.WORK_SUBMITTED && state != EscrowState.DISPUTE) {
             revert Errors.InvalidState();
@@ -414,6 +338,84 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         }
 
         emit FundsRefunded(iClient, amount);
+    }
+
+    function checkUpkeep(bytes calldata) external view override returns (bool upkeepNeeded, bytes memory performData) {
+        // if deadline has passed and state is FUNDED, we need to perform upkeep to refund
+        if (block.timestamp > deadline && state == EscrowState.FUNDED) {
+            upkeepNeeded = true;
+            performData = abi.encode(uint8(1)); // No additional data needed for performUpkeep
+        } else if (state == EscrowState.WORK_SUBMITTED && deliveryConfirmed) {
+            upkeepNeeded = true;
+            performData = abi.encode(uint8(2)); // No additional data needed for performUpkeep
+        } else {
+            upkeepNeeded = false;
+            performData = "";
+        }
+
+        return (upkeepNeeded, performData);
+    }
+
+    function performUpkeep(bytes calldata performData) external override {
+        uint8 action = abi.decode(performData, (uint8));
+        if (action == 1) {
+            isPerformingUpkeep = true;
+            deadlinePassedRefundClient();
+            isPerformingUpkeep = false;
+        } else if (action == 2) {
+            isPerformingUpkeep = true;
+            releaseFunds();
+            isPerformingUpkeep = false;
+        }
+    }
+
+    function getDeadline() external view returns (uint256) {
+        return deadline;
+    }
+
+    function getAmountToRelease() external view returns (uint256) {
+        return amountToRelease;
+    }
+
+    function getClientAddress() external view returns (address) {
+        return iClient;
+    }
+
+    function getFreelancerAddress() external view returns (address) {
+        return iFreelancer;
+    }
+
+    function getEscrowState() external view returns (EscrowState) {
+        return state;
+    }
+
+    function getDeliveryConfirmedState() external view returns (bool) {
+        return deliveryConfirmed;
+    }
+
+    function getDataFeedAddress() external view returns (address) {
+        return iDataFeed;
+    }
+
+    function getMinimumPriceUSD() external view returns (uint256) {
+        return minimumPriceUSDinEther;
+    }
+
+    function getModificationsRequested() external view returns (uint256) {
+        return modificationsRequested;
+    }
+
+    function getTokenAddress() external view returns (address) {
+        return iToken;
+    }
+
+    function getAdminAddress() external view returns (address) {
+        return iAdmin;
+    }
+
+    function getVersion() public view returns (uint256) {
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(iDataFeed);
+        return priceFeed.version();
     }
 
     fallback() external payable {
