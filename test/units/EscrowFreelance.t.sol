@@ -4,20 +4,35 @@ pragma solidity ^0.8.19;
 import {Test} from "forge-std/Test.sol";
 import "forge-std/console.sol";
 import {EscrowFreelance} from "../../src/EscrowFreelance.sol";
-import {DeployEscrow} from "../../script/DeployEscrow.s.sol";
+import {EscrowFreelanceFactory} from "../../src/EscrowFreelanceFactory.sol";
 import {HelperConfig} from "../../script/HelperConfig.s.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {Errors} from "../../src/libraries/Errors.sol";
 
 contract EscrowFreelanceTest is Test {
     EscrowFreelance escrow;
+    EscrowFreelanceFactory factory;
+    HelperConfig helperConfig;
+    address client;
+    address freelancer;
+    address admin;
     uint256 sendValue = 1 ether;
     event StateChanged(EscrowFreelance.EscrowState newState);
     event DisputeInitiated(address initiator);
     event ConflictResolved(address resolver, address winner);
 
     function setUp() public {
-        escrow = new DeployEscrow().runWithETH();
+        client = makeAddr("client");
+        freelancer = makeAddr("freelancer");
+        admin = makeAddr("admin");
+        helperConfig = new HelperConfig();
+        factory = new EscrowFreelanceFactory();
+        vm.deal(client, 100 ether);
+        address priceFeed = helperConfig.activeNetworkConfig();
+
+        vm.prank(client);
+        address escrowAddress = factory.createEscrow(freelancer, 7 days, priceFeed, address(0), admin, 0);
+        escrow = EscrowFreelance(payable(escrowAddress));
     }
 
     receive() external payable {}
@@ -57,9 +72,6 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testClientMarkDeliverConfirmed() public {
-        address freelancer = escrow.getFreelancerAddress();
-        address client = escrow.getClientAddress();
-
         console.log(client);
 
         vm.deal(client, 5 ether);
@@ -116,87 +128,83 @@ contract EscrowFreelanceTest is Test {
         escrow.fund(sendValue);
     }
 
-    function testCheckUpkeepDeadlinePassed() public {
-        // Fast forward time to exceed the deadline
-        vm.warp(block.timestamp + 8 days);
-
-        // Ensure the contract is in the FUNDED state
+    function testProcessExpiredEscrowsRefundsExpiredEscrow() public {
         vm.prank(escrow.getClientAddress());
         escrow.fund{value: 1 ether}(1 ether);
 
-        // Call checkUpkeep and verify the result
-        (bool upkeepNeeded, bytes memory performData) = escrow.checkUpkeep("");
-        uint8 action = abi.decode(performData, (uint8));
+        vm.warp(block.timestamp + 8 days);
 
-        assertEq(upkeepNeeded, true, "Upkeep should be needed when deadline has passed and state is FUNDED");
-        assertEq(action, 1, "PerformData should be empty for this upkeep");
+        uint256 clientBalanceBefore = escrow.getClientAddress().balance;
+        factory.processExpiredEscrows();
+
+        assertEq(uint256(escrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.REFUNDED));
+        assertEq(escrow.getClientAddress().balance, clientBalanceBefore + 1 ether);
+        assertEq(factory.getActiveEscrowCount(), 0);
     }
 
-    function testPerformUpkeepReleaseFunds() public {
-        if (block.chainid != 31337) return;
-        // Set up the contract in a DELIVERED state with delivery confirmed
-        address freelancer = escrow.getFreelancerAddress();
-        address client = escrow.getClientAddress();
-
+    function testProcessExpiredEscrowsProcessesUpToDefaultBatchSize() public {
         vm.deal(client, 5 ether);
         vm.prank(client);
         escrow.fund{value: sendValue}(sendValue);
 
-        vm.prank(freelancer);
-        escrow.markWorkSubmitted();
+        address secondClient = makeAddr("second-client");
+        vm.deal(secondClient, 5 ether);
+        address priceFeed = helperConfig.activeNetworkConfig();
+        vm.prank(secondClient);
+        address secondEscrowAddress = factory.createEscrow(freelancer, 7 days, priceFeed, address(0), admin, 0);
+        EscrowFreelance secondEscrow = EscrowFreelance(payable(secondEscrowAddress));
 
-        vm.prank(client);
-        escrow.confirmDelivery();
+        vm.prank(secondClient);
+        secondEscrow.fund{value: sendValue}(sendValue);
 
-        // Call checkUpkeep to get the performData
-        (bool upkeepNeeded, bytes memory performData) = escrow.checkUpkeep("");
-        assertTrue(upkeepNeeded, "Upkeep should be needed for releasing funds");
+        vm.warp(block.timestamp + 8 days);
+        factory.processExpiredEscrows();
 
-        // Perform upkeep and verify the funds are released
-        uint256 freelancerInitialBalance = freelancer.balance;
-        vm.prank(address(this));
-        escrow.performUpkeep(performData);
-        uint256 freelancerFinalBalance = freelancer.balance;
-
-        assertEq(
-            freelancerFinalBalance, freelancerInitialBalance + 1 ether, "Freelancer should receive the correct amount"
-        );
+        assertEq(factory.getActiveEscrowCount(), 0, "Both expired escrows should be processed within the default batch");
+        assertEq(factory.getScanCursor(), 0, "Cursor should reset after all active escrows are removed");
+        assertEq(uint256(escrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.REFUNDED));
+        assertEq(uint256(secondEscrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.REFUNDED));
     }
 
-    function testCheckUpkeepDeliveryConfirmed() public {
-        // Set up the contract in a DELIVERED state with delivery confirmed
-        address freelancer = escrow.getFreelancerAddress();
-        address client = escrow.getClientAddress();
+    function testProcessExpiredEscrowsRefundsExpiredEscrowAndRemovesItFromRegistry() public {
+        vm.deal(client, 5 ether);
+        vm.prank(client);
+        escrow.fund{value: sendValue}(sendValue);
 
+        vm.warp(block.timestamp + 8 days);
+
+        uint256 clientBalanceBefore = client.balance;
+        factory.processExpiredEscrows();
+
+        assertEq(uint256(escrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.REFUNDED));
+        assertEq(client.balance, clientBalanceBefore + sendValue);
+        assertEq(factory.getActiveEscrowCount(), 0);
+    }
+
+    function testProcessExpiredEscrowsNoopsBeforeDeadline() public {
+        assertEq(factory.getActiveEscrowCount(), 1, "Factory should track the new escrow as active");
+        vm.prank(client);
+        escrow.fund{value: sendValue}(sendValue);
+
+        factory.processExpiredEscrows();
+
+        assertEq(uint256(escrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.FUNDED));
+        assertEq(factory.getActiveEscrowCount(), 1);
+    }
+
+    function testConfirmDeliveryReleasesFundsAndRemovesEscrowFromActiveList() public {
         vm.prank(client);
         escrow.fund{value: 1 ether}(1 ether);
         vm.prank(freelancer);
         escrow.markWorkSubmitted();
+
+        uint256 freelancerBalanceBefore = freelancer.balance;
         vm.prank(client);
         escrow.confirmDelivery();
 
-        // Call checkUpkeep and verify the result
-        (bool upkeepNeeded, bytes memory performData) = escrow.checkUpkeep("");
-        uint8 action = abi.decode(performData, (uint8));
-
-        assertEq(upkeepNeeded, true, "Upkeep should be needed when state is DELIVERED and delivery is confirmed");
-        assertEq(action, 2, "PerformData should be empty for this upkeep");
-    }
-
-    function testCheckUpkeepNoUpkeepNeeded() public view {
-        // Ensure the contract is in a state where no upkeep is needed
-        EscrowFreelance.EscrowState state = escrow.getEscrowState();
-        assertEq(
-            uint256(state),
-            uint256(EscrowFreelance.EscrowState.CREATED), //check but it should be created, change main contract
-            "Initial state should be CREATED"
-        );
-
-        // Call checkUpkeep and verify the result
-        (bool upkeepNeeded, bytes memory performData) = escrow.checkUpkeep("");
-
-        assertEq(upkeepNeeded, false, "Upkeep should not be needed in the CREATED state");
-        assertEq(performData.length, 0, "PerformData should be empty when no upkeep is needed");
+        assertEq(uint256(escrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.RELEASED));
+        assertEq(freelancer.balance, freelancerBalanceBefore + 1 ether);
+        assertEq(factory.getActiveEscrowCount(), 0);
     }
 
     function testGetVersion() public view {
@@ -244,15 +252,10 @@ contract EscrowFreelanceTest is Test {
         assertEq(actualDeadline, expectedDeadline, "Deadline is not set correctly");
     }
 
-    function testDataFeedAddressCorrect() public {
-        if (block.chainid != 11155111) return;
-
-        HelperConfig helper = new HelperConfig();
-        address dataFeedAddressFromHelper = helper.activeNetworkConfig();
-
-        address dataFeedAddressFromContract = escrow.getDataFeedAddress();
-
-        assertEq(dataFeedAddressFromContract, dataFeedAddressFromHelper, "Data feed address is not set correctly");
+    function testDataFeedAddressCorrect() public view {
+        assertEq(
+            escrow.getDataFeedAddress(), helperConfig.activeNetworkConfig(), "Data feed address is not set correctly"
+        );
     }
 
     // this test is only meaningful on anvil local blockchain
@@ -325,6 +328,7 @@ contract EscrowFreelanceTest is Test {
         escrow.initiateDispute();
 
         assertEq(uint256(escrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.DISPUTE));
+        assertEq(factory.getActiveEscrowCount(), 0, "Disputed escrows should be removed from the active registry");
     }
 
     function testInitiateDisputeByFreelancerFromPendingModification() public {
@@ -345,6 +349,7 @@ contract EscrowFreelanceTest is Test {
         escrow.initiateDispute();
 
         assertEq(uint256(escrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.DISPUTE));
+        assertEq(factory.getActiveEscrowCount(), 0, "Disputed escrows should be removed from the active registry");
     }
 
     function testInitiateDisputeRevertsForUnauthorizedCaller() public {

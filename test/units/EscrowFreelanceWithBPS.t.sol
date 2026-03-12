@@ -108,7 +108,14 @@ contract EscrowFreelanceWithBPS is Test {
         HelperConfig helperConfig = new HelperConfig();
 
         return new EscrowFreelance(
-            msg.sender, freelancer, deliveryPeriod, helperConfig.activeNetworkConfig(), address(0), admin, customBps
+            msg.sender,
+            freelancer,
+            deliveryPeriod,
+            helperConfig.activeNetworkConfig(),
+            address(0),
+            address(this),
+            admin,
+            customBps
         );
     }
 }

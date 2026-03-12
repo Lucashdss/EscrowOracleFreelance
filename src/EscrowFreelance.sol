@@ -12,13 +12,13 @@ pragma solidity ^0.8.19;
  to set minimum payment amounts in USD, ensuring fair compensation for freelancers regardless of market fluctuations.
 */
 
-import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {Errors} from "./libraries/Errors.sol";
+import {IEscrowFreelanceFactory} from "./interfaces/IEscrowFreelanceFactory.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-contract EscrowFreelance is AutomationCompatibleInterface {
+contract EscrowFreelance {
     using Errors for *;
     using SafeERC20 for IERC20;
 
@@ -37,7 +37,6 @@ contract EscrowFreelance is AutomationCompatibleInterface {
     // variables are stored here
     EscrowState private state;
     bool private deliveryConfirmed;
-    bool private isPerformingUpkeep;
     bool private upFrontPaymentMade;
     uint256 private amountToRelease;
     uint256 private minimumPriceUSDinEther;
@@ -49,6 +48,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
     address private immutable iFreelancer;
     address internal immutable iDataFeed;
     address private immutable iAdmin;
+    address private immutable iFactory;
 
     event StateChanged(EscrowState newState);
     event FundsReleased(address freelancer, uint256 amount);
@@ -87,8 +87,8 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         _;
     }
 
-    modifier OnlyPerformUpkeep() {
-        if (!isPerformingUpkeep) {
+    modifier OnlyFactory() {
+        if (msg.sender != iFactory) {
             revert Errors.NotPerformUpkeep();
         }
         _;
@@ -118,6 +118,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         uint256 _deliveryPeriod,
         address _dataFeed,
         address _token,
+        address _factory,
         address _admin,
         uint256 _bps
     ) {
@@ -125,6 +126,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         iFreelancer = _freelancer;
         iDataFeed = _dataFeed;
         iToken = _token; // address(0) = ETH
+        iFactory = _factory;
         iAdmin = _admin;
         iBPS = _bps;
 
@@ -229,6 +231,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
 
         deliveryConfirmed = true;
         emit DeliveryConfirmed(msg.sender);
+        releaseFunds();
     }
 
     function requestModificationAndUpdateDeadline(uint256 deadlineExtension) external OnlyClient {
@@ -257,6 +260,7 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         state = EscrowState.DISPUTE;
         emit StateChanged(EscrowState.DISPUTE);
         emit DisputeInitiated(msg.sender);
+        _deactivateInFactory();
     }
 
     function resolveConflict(address winner) external OnlyAdmin {
@@ -267,19 +271,16 @@ contract EscrowFreelance is AutomationCompatibleInterface {
             revert Errors.InvalidConflictWinner();
         }
 
-        isPerformingUpkeep = true;
-
         if (winner == iClient) {
             deadlinePassedRefundClient();
         } else {
             releaseFunds();
         }
 
-        isPerformingUpkeep = false;
         emit ConflictResolved(msg.sender, winner);
     }
 
-    function releaseFunds() internal OnlyPerformUpkeep {
+    function releaseFunds() internal {
         if (state != EscrowState.WORK_SUBMITTED && state != EscrowState.DISPUTE) {
             revert Errors.InvalidState();
         }
@@ -310,9 +311,10 @@ contract EscrowFreelance is AutomationCompatibleInterface {
 
         emit FundsReleased(iFreelancer, amountToRelease);
         amountToRelease = 0;
+        _deactivateInFactory();
     }
 
-    function deadlinePassedRefundClient() internal OnlyPerformUpkeep {
+    function deadlinePassedRefundClient() internal {
         state = EscrowState.REFUNDED;
         emit StateChanged(EscrowState.REFUNDED);
 
@@ -338,35 +340,25 @@ contract EscrowFreelance is AutomationCompatibleInterface {
         }
 
         emit FundsRefunded(iClient, amount);
+        _deactivateInFactory();
     }
 
-    function checkUpkeep(bytes calldata) external view override returns (bool upkeepNeeded, bytes memory performData) {
-        // if deadline has passed and state is FUNDED, we need to perform upkeep to refund
-        if (block.timestamp > deadline && state == EscrowState.FUNDED) {
-            upkeepNeeded = true;
-            performData = abi.encode(uint8(1)); // No additional data needed for performUpkeep
-        } else if (state == EscrowState.WORK_SUBMITTED && deliveryConfirmed) {
-            upkeepNeeded = true;
-            performData = abi.encode(uint8(2)); // No additional data needed for performUpkeep
-        } else {
-            upkeepNeeded = false;
-            performData = "";
-        }
-
-        return (upkeepNeeded, performData);
+    function canAutoProcess() external view returns (bool) {
+        return block.timestamp > deadline && state == EscrowState.FUNDED;
     }
 
-    function performUpkeep(bytes calldata performData) external override {
-        uint8 action = abi.decode(performData, (uint8));
-        if (action == 1) {
-            isPerformingUpkeep = true;
-            deadlinePassedRefundClient();
-            isPerformingUpkeep = false;
-        } else if (action == 2) {
-            isPerformingUpkeep = true;
-            releaseFunds();
-            isPerformingUpkeep = false;
+    function autoProcess() external OnlyFactory {
+        if (block.timestamp <= deadline) {
+            revert Errors.DeliveryPeriodNotOver();
         }
+        if (state != EscrowState.FUNDED) {
+            revert Errors.InvalidState();
+        }
+        deadlinePassedRefundClient();
+    }
+
+    function _deactivateInFactory() internal {
+        IEscrowFreelanceFactory(iFactory).deactivateEscrow(address(this));
     }
 
     function getDeadline() external view returns (uint256) {
@@ -411,6 +403,10 @@ contract EscrowFreelance is AutomationCompatibleInterface {
 
     function getAdminAddress() external view returns (address) {
         return iAdmin;
+    }
+
+    function getFactoryAddress() external view returns (address) {
+        return iFactory;
     }
 
     function getVersion() public view returns (uint256) {

@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import {Script} from "forge-std/Script.sol";
 import {EscrowFreelance} from "../src/EscrowFreelance.sol";
+import {EscrowFreelanceFactory} from "../src/EscrowFreelanceFactory.sol";
 import {HelperConfig} from "./HelperConfig.s.sol";
 import {MockERC20} from "../test/mocks/MockERC20.sol";
 
@@ -14,15 +15,10 @@ contract DeployEscrow is Script {
         HelperConfig helperConfig = new HelperConfig();
 
         vm.startBroadcast();
-        EscrowFreelance escrow = new EscrowFreelance(
-            msg.sender,
-            freelancer,
-            deliveryPeriod,
-            helperConfig.activeNetworkConfig(),
-            address(0), // ETH
-            admin,
-            0
-        );
+        EscrowFreelanceFactory factory = new EscrowFreelanceFactory();
+        address escrowAddress =
+            factory.createEscrow(freelancer, deliveryPeriod, helperConfig.activeNetworkConfig(), address(0), admin, 0);
+        EscrowFreelance escrow = EscrowFreelance(payable(escrowAddress));
         vm.stopBroadcast();
         return escrow;
     }
@@ -35,15 +31,11 @@ contract DeployEscrow is Script {
         HelperConfig helperConfig = new HelperConfig();
 
         vm.startBroadcast();
-        EscrowFreelance escrow = new EscrowFreelance(
-            msg.sender,
-            freelancer,
-            deliveryPeriod,
-            helperConfig.activeNetworkConfig(),
-            address(0), // ETH
-            admin,
-            bps
+        EscrowFreelanceFactory factory = new EscrowFreelanceFactory();
+        address escrowAddress = factory.createEscrow(
+            freelancer, deliveryPeriod, helperConfig.activeNetworkConfig(), address(0), admin, bps
         );
+        EscrowFreelance escrow = EscrowFreelance(payable(escrowAddress));
         vm.stopBroadcast();
         return escrow;
     }
@@ -58,15 +50,11 @@ contract DeployEscrow is Script {
         MockERC20 token = new MockERC20("Test Token", "TST", 18);
 
         vm.startBroadcast();
-        EscrowFreelance escrow = new EscrowFreelance(
-            msg.sender,
-            freelancer,
-            deliveryPeriod,
-            helperConfig.activeNetworkConfig(),
-            address(token), // Use ERC20 instead of ETH
-            admin,
-            0
+        EscrowFreelanceFactory factory = new EscrowFreelanceFactory();
+        address escrowAddress = factory.createEscrow(
+            freelancer, deliveryPeriod, helperConfig.activeNetworkConfig(), address(token), admin, 0
         );
+        EscrowFreelance escrow = EscrowFreelance(payable(escrowAddress));
         vm.stopBroadcast();
         return escrow;
     }

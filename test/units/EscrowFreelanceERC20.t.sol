@@ -4,25 +4,35 @@ pragma solidity ^0.8.19;
 import {Test} from "forge-std/Test.sol";
 import "forge-std/console.sol";
 import {EscrowFreelance} from "../../src/EscrowFreelance.sol";
-import {DeployEscrow} from "../../script/DeployEscrow.s.sol";
+import {EscrowFreelanceFactory} from "../../src/EscrowFreelanceFactory.sol";
 import {HelperConfig} from "../../script/HelperConfig.s.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {Errors} from "../../src/libraries/Errors.sol";
 
 contract EscrowFreelanceTest is Test {
     EscrowFreelance escrowWithToken;
+    EscrowFreelanceFactory factory;
+    HelperConfig helperConfig;
     MockERC20 token;
+    address client;
+    address freelancer;
+    address admin;
     uint256 sendValue = 1 ether;
 
     function setUp() public {
-        // Deploy escrow with ERC20 token via your script
-        escrowWithToken = new DeployEscrow().runWithTokenAddressAnvil();
+        client = makeAddr("client");
+        freelancer = makeAddr("freelancer");
+        admin = makeAddr("admin");
+        helperConfig = new HelperConfig();
+        factory = new EscrowFreelanceFactory();
+        token = new MockERC20("Test Token", "TST", 18);
+        address priceFeed = helperConfig.activeNetworkConfig();
 
-        // STEP 2: Cast the token address from escrow to MockERC20
-        token = MockERC20(escrowWithToken.getTokenAddress());
+        vm.prank(client);
+        address escrowAddress = factory.createEscrow(freelancer, 7 days, priceFeed, address(token), admin, 0);
+        escrowWithToken = EscrowFreelance(payable(escrowAddress));
 
         // Mint tokens to client for testing
-        address client = escrowWithToken.getClientAddress();
         token.mint(client, 1_000_000e18);
     }
 
@@ -76,9 +86,7 @@ contract EscrowFreelanceTest is Test {
     // Release Tests
     // ---------------------------
 
-    function testERC20PerformUpkeepReleaseFunds() public {
-        address client = escrowWithToken.getClientAddress();
-        address freelancer = escrowWithToken.getFreelancerAddress();
+    function testERC20ConfirmDeliveryReleasesFundsImmediately() public {
         uint256 amount = 1000e18;
 
         vm.prank(client);
@@ -90,22 +98,18 @@ contract EscrowFreelanceTest is Test {
         vm.prank(freelancer);
         escrowWithToken.markWorkSubmitted();
 
+        uint256 freelancerBalanceBefore = token.balanceOf(freelancer);
         vm.prank(client);
         escrowWithToken.confirmDelivery();
-
-        (bool upkeepNeeded, bytes memory performData) = escrowWithToken.checkUpkeep("");
-        assertTrue(upkeepNeeded, "Upkeep should be needed");
-
-        uint256 freelancerBalanceBefore = token.balanceOf(freelancer);
-        vm.prank(address(this));
-        escrowWithToken.performUpkeep(performData);
         uint256 freelancerBalanceAfter = token.balanceOf(freelancer);
 
         assertEq(freelancerBalanceAfter - freelancerBalanceBefore, amount);
+        assertEq(uint256(escrowWithToken.getEscrowState()), uint256(EscrowFreelance.EscrowState.RELEASED));
         assertEq(escrowWithToken.getAmountToRelease(), 0);
+        assertEq(factory.getActiveEscrowCount(), 0);
     }
 
-    function testERC20ReleaseWithoutConfirmationReverts() public {
+    function testResolveConflictBeforeDisputeReverts() public {
         address client = escrowWithToken.getClientAddress();
         address freelancer = escrowWithToken.getFreelancerAddress();
         uint256 amount = 1000e18;
@@ -119,11 +123,9 @@ contract EscrowFreelanceTest is Test {
         vm.prank(freelancer);
         escrowWithToken.markWorkSubmitted();
 
-        //do not confirm delivery
-
-        vm.prank(address(this));
-        vm.expectRevert(Errors.DeliverNotConfirmed.selector);
-        escrowWithToken.performUpkeep(abi.encode(uint8(2)));
+        vm.expectRevert(Errors.InvalidState.selector);
+        vm.prank(admin);
+        escrowWithToken.resolveConflict(freelancer);
     }
 
     function testRequestModificationUpdatesDeadlineAndState() public {
@@ -214,16 +216,13 @@ contract EscrowFreelanceTest is Test {
         // Move forward past deadline
         vm.warp(block.timestamp + 8 days);
 
-        (bool upkeepNeeded, bytes memory performData) = escrowWithToken.checkUpkeep("");
-        assertTrue(upkeepNeeded, "Upkeep should be needed for refund");
-
         uint256 clientBalanceBefore = token.balanceOf(client);
-        vm.prank(address(this));
-        escrowWithToken.performUpkeep(performData);
+        factory.processExpiredEscrows();
         uint256 clientBalanceAfter = token.balanceOf(client);
 
         assertEq(clientBalanceAfter - clientBalanceBefore, amount);
         assertEq(escrowWithToken.getAmountToRelease(), 0);
+        assertEq(factory.getActiveEscrowCount(), 0);
     }
 
     // ---------------------------
@@ -234,9 +233,12 @@ contract EscrowFreelanceTest is Test {
         address client = escrowWithToken.getClientAddress();
         uint256 amount = 1 ether;
 
+        vm.deal(client, amount);
         vm.prank(client);
-        vm.expectRevert(Errors.TokenAddressIsNotETH.selector);
-        escrowWithToken.fund{value: amount}(amount);
+        (bool success,) =
+            address(escrowWithToken).call{value: amount}(abi.encodeWithSelector(EscrowFreelance.fund.selector, amount));
+
+        assertFalse(success, "ERC20 escrows must reject ETH funding");
     }
 
     function testERC20DoubleFundingAfterReleasedReverts() public {
@@ -249,16 +251,16 @@ contract EscrowFreelanceTest is Test {
         vm.prank(client);
         escrowWithToken.fund(amount);
 
-        // mark delivered and confirm delivery to release
+        uint256 freelancerBalanceBefore = token.balanceOf(freelancer);
+
         vm.prank(escrowWithToken.getFreelancerAddress());
         escrowWithToken.markWorkSubmitted();
 
         vm.prank(client);
         escrowWithToken.confirmDelivery();
 
-        (bool upkeepNeeded, bytes memory performData) = escrowWithToken.checkUpkeep("");
-        vm.prank(address(this));
-        escrowWithToken.performUpkeep(performData);
+        assertEq(token.balanceOf(freelancer) - freelancerBalanceBefore, amount);
+        assertEq(factory.getActiveEscrowCount(), 0);
 
         // Try funding again after RELEASED
         vm.prank(client);
