@@ -366,8 +366,7 @@ contract EscrowFreelance {
     }
 
     function canAutoProcess() external view returns (bool) {
-        return block.timestamp > deadline
-            && (state == EscrowState.FUNDED || state == EscrowState.PENDING_MODIFICATION);
+        return block.timestamp > deadline && (state == EscrowState.FUNDED || state == EscrowState.PENDING_MODIFICATION);
     }
 
     function autoProcess() external OnlyFactory {
