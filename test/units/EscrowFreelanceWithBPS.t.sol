@@ -101,6 +101,35 @@ contract EscrowFreelanceWithBPS is Test {
         );
     }
 
+    function testConfirmDeliveryChargesFeeOnRemainingBalanceAfterUpfront() public {
+        address client = escrowWithBPS.getClientAddress();
+        address freelancer = escrowWithBPS.getFreelancerAddress();
+        address admin = escrowWithBPS.getAdminAddress();
+        uint256 expectedUpfront = (SEND_VALUE * BPS) / 10_000;
+        uint256 remainingAmount = SEND_VALUE - expectedUpfront;
+        uint256 feeAmount = remainingAmount / 100;
+        uint256 releaseAmount = remainingAmount - feeAmount;
+
+        vm.deal(client, 5 ether);
+
+        uint256 freelancerBalanceBefore = freelancer.balance;
+        uint256 adminBalanceBefore = admin.balance;
+
+        vm.prank(client);
+        escrowWithBPS.fund{value: SEND_VALUE}(SEND_VALUE);
+
+        vm.prank(freelancer);
+        escrowWithBPS.markWorkSubmitted();
+
+        vm.prank(client);
+        escrowWithBPS.confirmDelivery();
+
+        assertEq(freelancer.balance - freelancerBalanceBefore, expectedUpfront + releaseAmount);
+        assertEq(admin.balance - adminBalanceBefore, feeAmount);
+        assertEq(address(escrowWithBPS).balance, 0);
+        assertEq(escrowWithBPS.getAmountToRelease(), 0);
+    }
+
     function _deployEscrowWithBps(uint256 customBps) internal returns (EscrowFreelance) {
         address freelancer = makeAddr("freelancer-custom-bps");
         address admin = makeAddr("admin-custom-bps");

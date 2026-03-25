@@ -26,7 +26,6 @@ contract EscrowFreelance {
         CREATED,
         FUNDED,
         WORK_SUBMITTED,
-        REVIEWING,
         PENDING_MODIFICATION,
         RELEASED,
         REFUNDED,
@@ -56,6 +55,8 @@ contract EscrowFreelance {
     event DeliveryConfirmed(address client);
     event MinimumPriceUpdated(uint256 newMinimumPrice);
     event UpfrontPaymentSent(uint256 bps, uint256 amountSent);
+    event ContractFunded(address indexed client, uint256 amount, address indexed token, bool isETH);
+    event FeeCharged(address indexed admin, uint256 feeAmount, address indexed token, bool isETH);
     event DisputeInitiated(address initiator);
     event ConflictResolved(address resolver, address winner);
 
@@ -98,18 +99,29 @@ contract EscrowFreelance {
         if (state == EscrowState.RELEASED || state == EscrowState.REFUNDED) {
             revert Errors.ContractHasBeenAlreadyReleasedOrRefunded();
         }
+        if (state == EscrowState.CANCELED) {
+            revert Errors.ContractCanceled();
+        }
+        if (state == EscrowState.DISPUTE) {
+            revert Errors.ContractInDispute();
+        }
 
-        if (minimumPriceUSDinEther != 0) {
-            if (amount < minimumPriceUSDinEther) {
-                revert Errors.AmountIsInferiorToMinimumUSD();
+        if (minimumPriceUSDinEther != 0 && amount < minimumPriceUSDinEther) {
+            revert Errors.AmountIsInferiorToMinimumUSD();
+        }
+
+        if (iToken != address(0)) {
+            uint256 allowance = IERC20(iToken).allowance(msg.sender, address(this));
+            if (allowance < amount) {
+                revert Errors.InsufficientAllowance();
+            }
+            uint256 balance = IERC20(iToken).balanceOf(msg.sender);
+            if (balance < amount) {
+                revert Errors.InsufficientTokenBalance();
             }
         }
 
         _;
-
-        if (state == EscrowState.CREATED) {
-            state = EscrowState.FUNDED;
-        }
     }
 
     constructor(
@@ -128,6 +140,10 @@ contract EscrowFreelance {
         iToken = _token; // address(0) = ETH
         iFactory = _factory;
         iAdmin = _admin;
+
+        if (_bps > 10000) {
+            revert Errors.InvalidBps();
+        }
         iBPS = _bps;
 
         unchecked {
@@ -172,28 +188,16 @@ contract EscrowFreelance {
         uint256 upfrontAmount = (amountToRelease * iBPS) / 10000;
         amountToRelease -= upfrontAmount;
         upFrontPaymentMade = true;
+        _transferAmount(iFreelancer, upfrontAmount);
         emit UpfrontPaymentSent(iBPS, upfrontAmount);
-
-        if (iToken == address(0)) {
-            // ETH transfer
-            (bool success,) = payable(iFreelancer).call{value: upfrontAmount}("");
-            if (!success) {
-                revert Errors.TransferFailed();
-            }
-        } else {
-            // ERC20 transfer
-            IERC20 token = IERC20(iToken);
-            uint256 balance = token.balanceOf(address(this));
-
-            if (balance < upfrontAmount) {
-                revert Errors.InsufficientFunds();
-            }
-
-            token.safeTransfer(iFreelancer, upfrontAmount);
-        }
     }
 
     function fund(uint256 amount) external payable OnlyClient beforeFund(amount) {
+        bool shouldSetFundedState = state == EscrowState.CREATED;
+        if (shouldSetFundedState) {
+            state = EscrowState.FUNDED;
+        }
+
         if (iToken == address(0)) {
             // ETH escrow
             if (msg.value != amount) {
@@ -213,6 +217,11 @@ contract EscrowFreelance {
         if (iBPS > 0 && !upFrontPaymentMade) {
             upfrontPayment();
         }
+
+        if (shouldSetFundedState) {
+            emit StateChanged(EscrowState.FUNDED);
+        }
+        emit ContractFunded(msg.sender, amount, iToken, iToken == address(0));
     }
 
     function markWorkSubmitted() external OnlyFreelancer {
@@ -252,6 +261,16 @@ contract EscrowFreelance {
         emit StateChanged(EscrowState.PENDING_MODIFICATION);
     }
 
+    function cancelEscrow() external OnlyClient {
+        if (state != EscrowState.CREATED) {
+            revert Errors.InvalidState();
+        }
+
+        state = EscrowState.CANCELED;
+        emit StateChanged(EscrowState.CANCELED);
+        _deactivateInFactory();
+    }
+
     function initiateDispute() external OnlyClientOrFreelancer {
         if (state != EscrowState.WORK_SUBMITTED && state != EscrowState.PENDING_MODIFICATION) {
             revert Errors.InvalidState();
@@ -280,6 +299,19 @@ contract EscrowFreelance {
         emit ConflictResolved(msg.sender, winner);
     }
 
+    function chargeFees() internal {
+        uint256 feeAmount = amountToRelease / 100;
+
+        if (feeAmount == 0) {
+            emit FeeCharged(iAdmin, feeAmount, iToken, iToken == address(0));
+            return;
+        }
+
+        amountToRelease -= feeAmount;
+        _transferAmount(iAdmin, feeAmount);
+        emit FeeCharged(iAdmin, feeAmount, iToken, iToken == address(0));
+    }
+
     function releaseFunds() internal {
         if (state != EscrowState.WORK_SUBMITTED && state != EscrowState.DISPUTE) {
             revert Errors.InvalidState();
@@ -290,68 +322,59 @@ contract EscrowFreelance {
 
         state = EscrowState.RELEASED;
         emit StateChanged(EscrowState.RELEASED);
+        chargeFees();
 
-        if (iToken == address(0)) {
-            // ETH transfer
-            (bool success,) = payable(iFreelancer).call{value: amountToRelease}("");
-            if (!success) {
-                revert Errors.TransferFailed();
-            }
-        } else {
-            // ERC20 transfer
-            IERC20 token = IERC20(iToken);
-            uint256 balance = token.balanceOf(address(this));
-
-            if (balance < amountToRelease) {
-                revert Errors.InsufficientFunds();
-            }
-
-            token.safeTransfer(iFreelancer, amountToRelease);
-        }
-
-        emit FundsReleased(iFreelancer, amountToRelease);
+        uint256 releaseAmount = amountToRelease;
         amountToRelease = 0;
+        _transferAmount(iFreelancer, releaseAmount);
+        emit FundsReleased(iFreelancer, releaseAmount);
         _deactivateInFactory();
     }
 
     function deadlinePassedRefundClient() internal {
         state = EscrowState.REFUNDED;
         emit StateChanged(EscrowState.REFUNDED);
+        chargeFees();
 
         uint256 amount = amountToRelease;
         amountToRelease = 0;
-
-        if (iToken == address(0)) {
-            // ETH transfer
-            (bool success,) = payable(iClient).call{value: amount}("");
-            if (!success) {
-                revert Errors.TransferFailed();
-            }
-        } else {
-            // ERC20 transfer
-            IERC20 token = IERC20(iToken);
-            uint256 balance = token.balanceOf(address(this));
-
-            if (balance < amount) {
-                revert Errors.InsufficientFunds();
-            }
-
-            token.safeTransfer(iClient, amount);
-        }
-
+        _transferAmount(iClient, amount);
         emit FundsRefunded(iClient, amount);
         _deactivateInFactory();
     }
 
+    function _transferAmount(address receiver, uint256 amount) internal {
+        if (iToken == address(0)) {
+            if (address(this).balance < amount) {
+                revert Errors.InsufficientFunds();
+            }
+
+            (bool success,) = payable(receiver).call{value: amount}("");
+            if (!success) {
+                revert Errors.TransferFailed();
+            }
+            return;
+        }
+
+        IERC20 token = IERC20(iToken);
+        uint256 balance = token.balanceOf(address(this));
+        if (balance < amount) {
+            revert Errors.InsufficientFunds();
+        }
+
+        token.safeTransfer(receiver, amount);
+    }
+
     function canAutoProcess() external view returns (bool) {
-        return block.timestamp > deadline && state == EscrowState.FUNDED;
+        return block.timestamp > deadline
+            && (state == EscrowState.FUNDED || state == EscrowState.PENDING_MODIFICATION);
     }
 
     function autoProcess() external OnlyFactory {
         if (block.timestamp <= deadline) {
             revert Errors.DeliveryPeriodNotOver();
         }
-        if (state != EscrowState.FUNDED) {
+        if (state != EscrowState.FUNDED && state != EscrowState.PENDING_MODIFICATION) {
             revert Errors.InvalidState();
         }
         deadlinePassedRefundClient();

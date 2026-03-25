@@ -15,8 +15,13 @@ library Errors {
     error NotPerformUpkeep();
     error ContractHasBeenAlreadyFunded();
     error ContractHasBeenAlreadyReleasedOrRefunded();
+    error ContractInDispute();
+    error ContractCanceled();
     error AmountIsInferiorToMinimumUSD();
+    error InsufficientAllowance();
+    error InsufficientTokenBalance();
     error TokenAddressIsNotETH();
     error TokenAddressIsNotERC20();
     error MaxModificationsReached();
+    error InvalidBps();
 }

@@ -18,6 +18,8 @@ contract EscrowFreelanceTest is Test {
     address admin;
     uint256 sendValue = 1 ether;
     event StateChanged(EscrowFreelance.EscrowState newState);
+    event ContractFunded(address indexed client, uint256 amount, address indexed token, bool isETH);
+    event FeeCharged(address indexed admin, uint256 feeAmount, address indexed token, bool isETH);
     event DisputeInitiated(address initiator);
     event ConflictResolved(address resolver, address winner);
 
@@ -61,6 +63,8 @@ contract EscrowFreelanceTest is Test {
         uint256 escrowInitialBalance = escrow.getAmountToRelease();
         uint256 clientInitialBalance = client.balance;
 
+        vm.expectEmit(false, false, false, true, address(escrow));
+        emit ContractFunded(client, sendValue, address(0), true);
         vm.prank(client);
         escrow.fund{value: sendValue}(sendValue);
 
@@ -69,6 +73,13 @@ contract EscrowFreelanceTest is Test {
         assertEq(escrowFinalBalance, escrowInitialBalance + sendValue, "Escrow balance did not increase correctly");
 
         assertEq(client.balance, clientInitialBalance - sendValue, "Client balance did not decrease correctly");
+    }
+
+    function testFirstFundingEmitsFundedState() public {
+        vm.expectEmit(false, false, false, true, address(escrow));
+        emit StateChanged(EscrowFreelance.EscrowState.FUNDED);
+        vm.prank(client);
+        escrow.fund{value: sendValue}(sendValue);
     }
 
     function testClientMarkDeliverConfirmed() public {
@@ -129,6 +140,10 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testProcessExpiredEscrowsRefundsExpiredEscrow() public {
+        uint256 feeAmount = 1 ether / 100;
+        uint256 refundAmount = 1 ether - feeAmount;
+        uint256 adminBalanceBefore = admin.balance;
+
         vm.prank(escrow.getClientAddress());
         escrow.fund{value: 1 ether}(1 ether);
 
@@ -138,7 +153,8 @@ contract EscrowFreelanceTest is Test {
         factory.processExpiredEscrows();
 
         assertEq(uint256(escrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.REFUNDED));
-        assertEq(escrow.getClientAddress().balance, clientBalanceBefore + 1 ether);
+        assertEq(escrow.getClientAddress().balance, clientBalanceBefore + refundAmount);
+        assertEq(admin.balance, adminBalanceBefore + feeAmount);
         assertEq(factory.getActiveEscrowCount(), 0);
     }
 
@@ -167,6 +183,10 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testProcessExpiredEscrowsRefundsExpiredEscrowAndRemovesItFromRegistry() public {
+        uint256 feeAmount = sendValue / 100;
+        uint256 refundAmount = sendValue - feeAmount;
+        uint256 adminBalanceBefore = admin.balance;
+
         vm.deal(client, 5 ether);
         vm.prank(client);
         escrow.fund{value: sendValue}(sendValue);
@@ -177,7 +197,32 @@ contract EscrowFreelanceTest is Test {
         factory.processExpiredEscrows();
 
         assertEq(uint256(escrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.REFUNDED));
-        assertEq(client.balance, clientBalanceBefore + sendValue);
+        assertEq(client.balance, clientBalanceBefore + refundAmount);
+        assertEq(admin.balance, adminBalanceBefore + feeAmount);
+        assertEq(factory.getActiveEscrowCount(), 0);
+    }
+
+    function testProcessExpiredEscrowsRefundsPendingModificationEscrow() public {
+        uint256 feeAmount = sendValue / 100;
+        uint256 refundAmount = sendValue - feeAmount;
+        uint256 adminBalanceBefore = admin.balance;
+
+        vm.deal(client, 5 ether);
+        vm.prank(client);
+        escrow.fund{value: sendValue}(sendValue);
+        vm.prank(freelancer);
+        escrow.markWorkSubmitted();
+        vm.prank(client);
+        escrow.requestModificationAndUpdateDeadline(1 days);
+
+        vm.warp(block.timestamp + 9 days);
+
+        uint256 clientBalanceBefore = client.balance;
+        factory.processExpiredEscrows();
+
+        assertEq(uint256(escrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.REFUNDED));
+        assertEq(client.balance, clientBalanceBefore + refundAmount);
+        assertEq(admin.balance, adminBalanceBefore + feeAmount);
         assertEq(factory.getActiveEscrowCount(), 0);
     }
 
@@ -193,18 +238,45 @@ contract EscrowFreelanceTest is Test {
     }
 
     function testConfirmDeliveryReleasesFundsAndRemovesEscrowFromActiveList() public {
+        uint256 feeAmount = 1 ether / 100;
+        uint256 releaseAmount = 1 ether - feeAmount;
+
         vm.prank(client);
         escrow.fund{value: 1 ether}(1 ether);
         vm.prank(freelancer);
         escrow.markWorkSubmitted();
 
         uint256 freelancerBalanceBefore = freelancer.balance;
+        uint256 adminBalanceBefore = admin.balance;
         vm.prank(client);
         escrow.confirmDelivery();
 
         assertEq(uint256(escrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.RELEASED));
-        assertEq(freelancer.balance, freelancerBalanceBefore + 1 ether);
+        assertEq(freelancer.balance, freelancerBalanceBefore + releaseAmount);
+        assertEq(admin.balance, adminBalanceBefore + feeAmount);
         assertEq(factory.getActiveEscrowCount(), 0);
+    }
+
+    function testConfirmDeliveryWithAmountBelow100ChargesZeroFee() public {
+        uint256 amount = 99;
+
+        vm.deal(client, 1 ether);
+        vm.prank(client);
+        escrow.fund{value: amount}(amount);
+        vm.prank(freelancer);
+        escrow.markWorkSubmitted();
+
+        uint256 freelancerBalanceBefore = freelancer.balance;
+        uint256 adminBalanceBefore = admin.balance;
+
+        vm.expectEmit(false, false, false, true, address(escrow));
+        emit FeeCharged(admin, 0, address(0), true);
+        vm.prank(client);
+        escrow.confirmDelivery();
+
+        assertEq(freelancer.balance - freelancerBalanceBefore, amount);
+        assertEq(admin.balance, adminBalanceBefore);
+        assertEq(escrow.getAmountToRelease(), 0);
     }
 
     function testGetVersion() public view {
@@ -413,10 +485,68 @@ contract EscrowFreelanceTest is Test {
         escrow.resolveConflict(outsider);
     }
 
+    function testCancelEscrowOnlyClientCanCall() public {
+        vm.prank(freelancer);
+        vm.expectRevert(Errors.OnlyClient.selector);
+        escrow.cancelEscrow();
+    }
+
+    function testCancelEscrowSetsCanceledStateAndRemovesEscrow() public {
+        vm.expectEmit(false, false, false, true, address(escrow));
+        emit StateChanged(EscrowFreelance.EscrowState.CANCELED);
+
+        vm.prank(client);
+        escrow.cancelEscrow();
+
+        assertEq(uint256(escrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.CANCELED));
+        assertEq(factory.getActiveEscrowCount(), 0);
+    }
+
+    function testFundingAfterCancelEscrowReverts() public {
+        vm.prank(client);
+        escrow.cancelEscrow();
+
+        vm.prank(client);
+        vm.expectRevert(Errors.ContractCanceled.selector);
+        escrow.fund{value: sendValue}(sendValue);
+    }
+
+    function testCancelEscrowAfterFundingReverts() public {
+        vm.prank(client);
+        escrow.fund{value: sendValue}(sendValue);
+
+        vm.prank(client);
+        vm.expectRevert(Errors.InvalidState.selector);
+        escrow.cancelEscrow();
+    }
+
+    function testFundRevertsWhenEscrowIsInDispute() public {
+        vm.deal(client, 5 ether);
+        vm.prank(client);
+        escrow.fund{value: sendValue}(sendValue);
+        vm.prank(freelancer);
+        escrow.markWorkSubmitted();
+        vm.prank(client);
+        escrow.initiateDispute();
+
+        vm.prank(client);
+        vm.expectRevert(Errors.ContractInDispute.selector);
+        escrow.fund{value: sendValue}(sendValue);
+    }
+
+    function testConstructorRevertsWhenBpsIsAbove100Percent() public {
+        address priceFeed = helperConfig.activeNetworkConfig();
+
+        vm.expectRevert(Errors.InvalidBps.selector);
+        new EscrowFreelance(client, freelancer, 7 days, priceFeed, address(0), address(factory), admin, 10001);
+    }
+
     function testResolveConflictRefundsClientWhenWinnerIsClient() public {
         address admin = escrow.getAdminAddress();
         address client = escrow.getClientAddress();
         address freelancer = escrow.getFreelancerAddress();
+        uint256 feeAmount = sendValue / 100;
+        uint256 refundAmount = sendValue - feeAmount;
 
         vm.deal(client, 5 ether);
         vm.prank(client);
@@ -427,6 +557,7 @@ contract EscrowFreelanceTest is Test {
         escrow.initiateDispute();
 
         uint256 clientBalanceBefore = client.balance;
+        uint256 adminBalanceBefore = admin.balance;
 
         vm.expectEmit(false, false, false, true, address(escrow));
         emit StateChanged(EscrowFreelance.EscrowState.REFUNDED);
@@ -437,7 +568,8 @@ contract EscrowFreelanceTest is Test {
         escrow.resolveConflict(client);
 
         assertEq(uint256(escrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.REFUNDED));
-        assertEq(client.balance, clientBalanceBefore + sendValue);
+        assertEq(client.balance, clientBalanceBefore + refundAmount);
+        assertEq(admin.balance, adminBalanceBefore + feeAmount);
         assertEq(escrow.getAmountToRelease(), 0);
     }
 
@@ -445,6 +577,8 @@ contract EscrowFreelanceTest is Test {
         address admin = escrow.getAdminAddress();
         address client = escrow.getClientAddress();
         address freelancer = escrow.getFreelancerAddress();
+        uint256 feeAmount = sendValue / 100;
+        uint256 releaseAmount = sendValue - feeAmount;
 
         vm.deal(client, 5 ether);
         vm.prank(client);
@@ -455,6 +589,7 @@ contract EscrowFreelanceTest is Test {
         escrow.initiateDispute();
 
         uint256 freelancerBalanceBefore = freelancer.balance;
+        uint256 adminBalanceBefore = admin.balance;
 
         vm.expectEmit(false, false, false, true, address(escrow));
         emit StateChanged(EscrowFreelance.EscrowState.RELEASED);
@@ -465,7 +600,8 @@ contract EscrowFreelanceTest is Test {
         escrow.resolveConflict(freelancer);
 
         assertEq(uint256(escrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.RELEASED));
-        assertEq(freelancer.balance, freelancerBalanceBefore + sendValue);
+        assertEq(freelancer.balance, freelancerBalanceBefore + releaseAmount);
+        assertEq(admin.balance, adminBalanceBefore + feeAmount);
         assertEq(escrow.getAmountToRelease(), 0);
     }
 }

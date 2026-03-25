@@ -18,6 +18,7 @@ contract EscrowFreelanceTest is Test {
     address freelancer;
     address admin;
     uint256 sendValue = 1 ether;
+    event ContractFunded(address indexed client, uint256 amount, address indexed token, bool isETH);
 
     function setUp() public {
         client = makeAddr("client");
@@ -47,6 +48,8 @@ contract EscrowFreelanceTest is Test {
         vm.prank(client);
         token.approve(address(escrowWithToken), amount);
 
+        vm.expectEmit(false, false, false, true, address(escrowWithToken));
+        emit ContractFunded(client, amount, address(token), false);
         vm.prank(client);
         escrowWithToken.fund(amount);
 
@@ -60,7 +63,30 @@ contract EscrowFreelanceTest is Test {
         uint256 amount = 1000e18;
 
         vm.prank(client);
-        vm.expectRevert();
+        vm.expectRevert(Errors.InsufficientAllowance.selector);
+        escrowWithToken.fund(amount);
+    }
+
+    function testERC20FundingWithPartialAllowanceReverts() public {
+        address fundedClient = escrowWithToken.getClientAddress();
+        uint256 amount = 1000e18;
+
+        vm.prank(fundedClient);
+        token.approve(address(escrowWithToken), amount - 1);
+
+        vm.prank(fundedClient);
+        vm.expectRevert(Errors.InsufficientAllowance.selector);
+        escrowWithToken.fund(amount);
+    }
+
+    function testERC20FundingWithInsufficientBalanceReverts() public {
+        uint256 amount = 1_000_000e18 + 1;
+
+        vm.prank(client);
+        token.approve(address(escrowWithToken), amount);
+
+        vm.prank(client);
+        vm.expectRevert(Errors.InsufficientTokenBalance.selector);
         escrowWithToken.fund(amount);
     }
 
@@ -88,6 +114,8 @@ contract EscrowFreelanceTest is Test {
 
     function testERC20ConfirmDeliveryReleasesFundsImmediately() public {
         uint256 amount = 1000e18;
+        uint256 feeAmount = amount / 100;
+        uint256 releaseAmount = amount - feeAmount;
 
         vm.prank(client);
         token.approve(address(escrowWithToken), amount);
@@ -99,11 +127,13 @@ contract EscrowFreelanceTest is Test {
         escrowWithToken.markWorkSubmitted();
 
         uint256 freelancerBalanceBefore = token.balanceOf(freelancer);
+        uint256 adminBalanceBefore = token.balanceOf(admin);
         vm.prank(client);
         escrowWithToken.confirmDelivery();
         uint256 freelancerBalanceAfter = token.balanceOf(freelancer);
 
-        assertEq(freelancerBalanceAfter - freelancerBalanceBefore, amount);
+        assertEq(freelancerBalanceAfter - freelancerBalanceBefore, releaseAmount);
+        assertEq(token.balanceOf(admin) - adminBalanceBefore, feeAmount);
         assertEq(uint256(escrowWithToken.getEscrowState()), uint256(EscrowFreelance.EscrowState.RELEASED));
         assertEq(escrowWithToken.getAmountToRelease(), 0);
         assertEq(factory.getActiveEscrowCount(), 0);
@@ -126,6 +156,26 @@ contract EscrowFreelanceTest is Test {
         vm.expectRevert(Errors.InvalidState.selector);
         vm.prank(admin);
         escrowWithToken.resolveConflict(freelancer);
+    }
+
+    function testERC20FundingWhenDisputeReverts() public {
+        uint256 amount = 1000e18;
+
+        vm.prank(client);
+        token.approve(address(escrowWithToken), amount);
+
+        vm.prank(client);
+        escrowWithToken.fund(amount);
+
+        vm.prank(freelancer);
+        escrowWithToken.markWorkSubmitted();
+
+        vm.prank(client);
+        escrowWithToken.initiateDispute();
+
+        vm.prank(client);
+        vm.expectRevert(Errors.ContractInDispute.selector);
+        escrowWithToken.fund(amount);
     }
 
     function testRequestModificationUpdatesDeadlineAndState() public {
@@ -206,6 +256,8 @@ contract EscrowFreelanceTest is Test {
     function testERC20RefundClientAfterDeadline() public {
         address client = escrowWithToken.getClientAddress();
         uint256 amount = 1000e18;
+        uint256 feeAmount = amount / 100;
+        uint256 refundAmount = amount - feeAmount;
 
         vm.prank(client);
         token.approve(address(escrowWithToken), amount);
@@ -217,10 +269,12 @@ contract EscrowFreelanceTest is Test {
         vm.warp(block.timestamp + 8 days);
 
         uint256 clientBalanceBefore = token.balanceOf(client);
+        uint256 adminBalanceBefore = token.balanceOf(admin);
         factory.processExpiredEscrows();
         uint256 clientBalanceAfter = token.balanceOf(client);
 
-        assertEq(clientBalanceAfter - clientBalanceBefore, amount);
+        assertEq(clientBalanceAfter - clientBalanceBefore, refundAmount);
+        assertEq(token.balanceOf(admin) - adminBalanceBefore, feeAmount);
         assertEq(escrowWithToken.getAmountToRelease(), 0);
         assertEq(factory.getActiveEscrowCount(), 0);
     }
@@ -244,6 +298,8 @@ contract EscrowFreelanceTest is Test {
     function testERC20DoubleFundingAfterReleasedReverts() public {
         address client = escrowWithToken.getClientAddress();
         uint256 amount = 1000e18;
+        uint256 feeAmount = amount / 100;
+        uint256 releaseAmount = amount - feeAmount;
 
         vm.prank(client);
         token.approve(address(escrowWithToken), amount);
@@ -259,7 +315,8 @@ contract EscrowFreelanceTest is Test {
         vm.prank(client);
         escrowWithToken.confirmDelivery();
 
-        assertEq(token.balanceOf(freelancer) - freelancerBalanceBefore, amount);
+        assertEq(token.balanceOf(freelancer) - freelancerBalanceBefore, releaseAmount);
+        assertEq(token.balanceOf(admin), feeAmount);
         assertEq(factory.getActiveEscrowCount(), 0);
 
         // Try funding again after RELEASED
