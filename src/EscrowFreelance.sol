@@ -225,7 +225,7 @@ contract EscrowFreelance {
     }
 
     function markWorkSubmitted() external OnlyFreelancer {
-        if (state != EscrowState.FUNDED) {
+        if (state != EscrowState.FUNDED && state != EscrowState.PENDING_MODIFICATION) {
             revert Errors.InvalidState();
         }
 
