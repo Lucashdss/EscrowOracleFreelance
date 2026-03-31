@@ -15,4 +15,12 @@ forge-std = "foundry-rs/forge-std"
 openzeppelin-contracts = "OpenZeppelin/openzeppelin-contracts"
 chainlink-brownie-contracts = "smartcontractkit/chainlink-brownie-contracts"
 
+[fuzz]
+runs = 256
+
+[invariant]
+runs = 128
+depth = 32
+fail_on_revert = false
+
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
