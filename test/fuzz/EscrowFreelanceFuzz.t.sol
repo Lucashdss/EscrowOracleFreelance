@@ -24,9 +24,8 @@ contract EscrowFreelanceFuzzTest is Test {
         factory = new EscrowFreelanceFactory();
 
         vm.startPrank(client);
-        address escrowAddress = factory.createEscrow(
-            freelancer, 7 days, helperConfig.activeNetworkConfig(), address(0), admin, 0
-        );
+        address escrowAddress =
+            factory.createEscrow(freelancer, 7 days, helperConfig.activeNetworkConfig(), address(0), admin, 0);
         vm.stopPrank();
         escrow = EscrowFreelance(payable(escrowAddress));
     }
@@ -44,7 +43,9 @@ contract EscrowFreelanceFuzzTest is Test {
         assertEq(uint256(escrow.getEscrowState()), uint256(EscrowFreelance.EscrowState.FUNDED));
     }
 
-    function testFuzz_RequestModificationUpdatesDeadline(uint96 amount, uint32 extensionOne, uint32 extensionTwo) public {
+    function testFuzz_RequestModificationUpdatesDeadline(uint96 amount, uint32 extensionOne, uint32 extensionTwo)
+        public
+    {
         amount = uint96(bound(amount, 1, 100 ether));
         extensionOne = uint32(bound(extensionOne, 1, 30 days));
         extensionTwo = uint32(bound(extensionTwo, 1, 30 days));
@@ -77,9 +78,8 @@ contract EscrowFreelanceFuzzTest is Test {
         bps = uint16(bound(bps, 1, 10_000));
 
         vm.startPrank(client);
-        address escrowAddress = factory.createEscrow(
-            freelancer, 7 days, helperConfig.activeNetworkConfig(), address(0), admin, bps
-        );
+        address escrowAddress =
+            factory.createEscrow(freelancer, 7 days, helperConfig.activeNetworkConfig(), address(0), admin, bps);
         vm.stopPrank();
         EscrowFreelance escrowWithBps = EscrowFreelance(payable(escrowAddress));
 

@@ -27,9 +27,8 @@ contract EscrowFreelanceERC20FuzzTest is Test {
         token = new MockERC20("Test Token", "TST", 18);
 
         vm.startPrank(client);
-        address escrowAddress = factory.createEscrow(
-            freelancer, 7 days, helperConfig.activeNetworkConfig(), address(token), admin, 0
-        );
+        address escrowAddress =
+            factory.createEscrow(freelancer, 7 days, helperConfig.activeNetworkConfig(), address(token), admin, 0);
         vm.stopPrank();
         escrow = EscrowFreelance(payable(escrowAddress));
     }

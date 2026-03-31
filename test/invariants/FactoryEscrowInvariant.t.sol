@@ -33,9 +33,8 @@ contract FactoryEscrowInvariantTest is Test {
             admins.push(admin);
 
             vm.startPrank(client);
-            address escrowAddress = factory.createEscrow(
-                freelancer, 7 days, helperConfig.activeNetworkConfig(), address(0), admin, 0
-            );
+            address escrowAddress =
+                factory.createEscrow(freelancer, 7 days, helperConfig.activeNetworkConfig(), address(0), admin, 0);
             vm.stopPrank();
             escrows.push(EscrowFreelance(payable(escrowAddress)));
         }

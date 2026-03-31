@@ -12,7 +12,13 @@ contract EscrowFreelanceHandler is Test {
     address internal immutable iFreelancer;
     address internal immutable iAdmin;
 
-    constructor(EscrowFreelance escrow, EscrowFreelanceFactory factory, address client, address freelancer, address admin) {
+    constructor(
+        EscrowFreelance escrow,
+        EscrowFreelanceFactory factory,
+        address client,
+        address freelancer,
+        address admin
+    ) {
         iEscrow = escrow;
         iFactory = factory;
         iClient = client;
