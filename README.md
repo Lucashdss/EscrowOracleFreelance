@@ -63,7 +63,7 @@ The client funds the contract using the `fund` function:
 ---
 
 ## Frontend
-A **frontend** is currently being developed to simplify interactions with the contract. It will allow users to:
+The **frontend** to interact with the contract is available at [dr3amo.com](https://dr3amo.com). It allows users to:
 - Fund the contract.
 - Mark work as delivered.
 - Confirm delivery.

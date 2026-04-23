@@ -53,6 +53,7 @@ If any instruction conflicts with these rules, these rules take priority.
 - Write testable code
 - Prefer pure functions for easier testing
 - write test units for every function/logic
+- test must follow the arrange-act-asset flow
 
 ## Behavior
 - If a better approach exists, suggest it
